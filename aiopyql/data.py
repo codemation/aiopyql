@@ -7,9 +7,11 @@ import asyncio
 TableColumn = namedtuple('col', ['name', 'type', 'mods'])
 
 def get_db_manager(db_connect, db_type):
+    """
+    returns async generator which manages context
+    of the async db connection 
+    """
     async def connect(*args, **kwds):
-        # Code to acquire resource, e.g.:
-        #conn = await db_connect(*args, **kwds)
         async with db_connect(*args, **kwds) as conn:
             try:
                 yield conn
@@ -21,23 +23,30 @@ def get_db_manager(db_connect, db_type):
                 if conn:
                     await conn.rollback()
             finally:
-                #if 'commit' in kwds:
-                #    await conn.commit()
-                print("finished db_connect")
                 return
     return connect
-def get_cursor_manager(connect_db, params={}):
+def get_cursor_manager(connect_db, db_type, params={}):
+    """
+    returns async generator which manages context of cursor
+    or passes db connection, as well as processes db commit
+    for changes
+    """
     async def cursor(commit=False):
         connect_params = params
-        async for conn in connect_db(**connect_params):
-            async with conn.cursor() as c:
-                try:
-                    yield c
-                except Exception as e:
-                    print(f"error yielding cursor {repr(e)}")
-                finally:
-                    c.close()
-                    return
+        async for db in connect_db(**connect_params):
+            if db_type == 'sqlite':
+                yield db
+            if db_type == 'mysql':
+                async with db.cursor() as c:
+                    try:
+                        yield c
+                    except Exception as e:
+                        print(f"error yielding cursor {repr(e)}")
+                    finally:
+                        pass
+            if commit:
+                await db.commit()
+        return
                             
     return cursor
 def flatten(s):
@@ -66,12 +75,26 @@ class Database:
     """
         Intialize with db connector & name of database. If database exists, it will be used else a new db will be created \n
 
-        sqlite example:
-            import sqlite3
-            db = Database(sqlite3.connect, "testdb")
-        mysql example:
-            import mysql.connector
-            db = Database(mysql.connector.connect, **config)
+Sqlite3: Default
+
+        from aiopyql import data
+
+        db = data.Database(
+            database="testdb"
+            )
+    
+
+Mysql
+
+        from aiopyql import data
+
+        db = data.Database(
+            database='mysql_database',
+            user='mysqluser',
+            password='my-secret-pw',
+            host='localhost',
+            type='mysql'
+            )
         
     """
     def __init__(self, **kw):
@@ -95,7 +118,7 @@ class Database:
             if not 'db' in kw:
                 raise InvalidInputError(kw, "missing field for 'database' or 'db' ")
         self.db_name = kw['database'] if 'database' in kw else kw['db']
-        self.cursor = get_cursor_manager(self.connect, self.connect_config)
+        self.cursor = get_cursor_manager(self.connect, self.type, params = self.connect_config)
         if self.type == 'sqlite':
             self.foreign_keys = False
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
@@ -107,8 +130,6 @@ class Database:
     async def _run_async_task_in_loop(coro):
         return await coro
     def _run_async_task(self, coro):
-        #async def task_runner():
-        #    return await asyncio.gather(asyncio.create_task(coro))
         return self.loop.run_until_complete(coro)
 
     def __contains__(self, table):
@@ -137,69 +158,34 @@ class Database:
         results = []
         query = f"{';'.join(self.pre_query + [query])}"
         query = query.split(';') if ';' in query else [query]
-        async def execute(conn, query):
-            if commit == True:
-                for q in query:
-                    try:
-                        await conn.execute(q)
-                    except Exception as e:
-                        self.log.exception(f"error executing query: {q}")
-                await db.commit()
-                self.log.debug(f"execute query: {query} results: {results}")
-                return
-            else:
-                for q in query:
+        async for conn in self.cursor(commit=commit):
+            for q in query:
+                if self.type == 'sqlite':
                     try:
                         async with conn.execute(q) as cursor:
                             async for row in cursor:
                                 results.append(row)
-                    except Exception:
-                        # MYSQL conn should be iterated over for results
-                        await conn.execute(q)
-                        async for row in conn:
-                            results.append(row)
-                return results
-        async for db in self.connect(**self.connect_config):
-            # Use db connection or cursor
-            if self.type == 'mysql':
-                async with db.cursor() as cur:
-                    results = await execute(cur, query)
-            if self.type == 'sqlite':
-                results = await execute(db, query)
+                    except Exception as e:
+                        results.append(repr(e))
+                if self.type == 'mysql':
+                    # MYSQL conn should be iterated over for results
+                    await conn.execute(q)
+                    async for row in conn:
+                        results.append(row)
         return results
             
     async def run(self, query):
+        """
+        Run query with commit
+        """
         return await self.execute(query, commit=True)
     async def get(self, query, commit=False):
+        """
+        Run query with optional commit. Typically used for select query. 
+        Default:
+            commit=False
+        """
         return await self.execute(query, commit=False)
-
-        query = f"{';'.join(self.pre_query + [query])}"
-        
-        self.log.debug(f'{self.db_name}.get query: {query}')
-        #async with self.cursor() as c:
-        async for c in self.cursor(commit=commit):
-            try:
-                rows = []
-                result = []
-                query = query.split(';') if ';' in query else [query]
-                for q in query:
-                    async with c.execute(q) as cur:
-                        async for v in cur:
-                            result.append(v)
-                    """
-                    else:
-                        try:
-                            async for row in r:
-                                result.append(row)
-                        except Exception as e:
-                            async for v in c:
-                                result.append(v)
-                    await r.close()
-                """
-                return result if len(rows) == 0 else rows
-            except Exception as e:
-                self.log.exception(f"exception in .get {repr(e)}")
-        return rows
     async def load_tables(self):
         if self.type == 'sqlite':
             tables_in_db_coro = await self.get("select name, sql from sqlite_master where type = 'table'")
@@ -445,13 +431,6 @@ class Table:
         index = 0
         kw = self._process_input(kw)
         if 'where' in kw:
-            """
-            for col_name,v in kw['where'].items():
-                if not col_name in self.columns:
-                    error = f'{col_name} is not a valid column in table {self.name}'
-                    raise InvalidInputError(error, f"columns available {[self.columns[c].name for c in self.columns]}")
-                .select(*, where=['col1' > val])
-            """
             and_value = 'WHERE '
             for col_name,v in kw['where'].items():
                 if '.' in col_name:
@@ -478,9 +457,6 @@ class Table:
             if not join_table in self.database.tables:
                 error = f"{join_table} does not exist in database"
                 raise InvalidInputError(error, f"valid tables {list(t for t in self.database.tables)}")
-            #if not len(condition) == 1:
-            #    message = "join usage: join={'table1': {'table1.col': 'this.col'} } or  join={'table1': {'this.col': 'table1.col'} }"
-            #    raise InvalidInputError(f"join expects dict of len 1, not {len(condition)} for {condition}", message)
             count = 0
             for col1, col2 in condition.items():
                 for col in [col1, col2]:
