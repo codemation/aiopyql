@@ -400,7 +400,7 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
 
     db.tables['stocks'][2] = to_update # Synchronus only
 
-    await db.tables['stocks'].set_items(2, to_update)
+    await db.tables['stocks'].set_item(2, to_update)
 
     query:
         # check that primary_key value 2 exists
