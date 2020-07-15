@@ -18,28 +18,35 @@ class TestData(unittest.TestCase):
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
 
-        db = data.Database(
-            loop=loop,
-            **config
-            )
+        db = data.Database.create(**config)
 
         # Start tests
         loop.run_until_complete(async_test(db))
+
+        # test sync functions
+        db = data.Database(**config, loop=loop)
         test(db)
         loop.close()
         
     def test_run_sqlite_test(self):
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
-
-        db = data.Database(
-            database="testdb",
-            loop=loop,
-            debug=True
+        
+        # test async load inside event loop
+        db = data.Database.create(
+                database="testdb",
+                debug=True
             )
         loop.run_until_complete(async_test(db))
+
+        # test sync functions
+        db = data.Database(
+                loop=loop,
+                database="testdb",
+                debug=True
+            )
         test(db)
-        loop.close()
+        
         ref_database = data.Database(
             database="testdb",
             loop=loop,
@@ -49,6 +56,7 @@ class TestData(unittest.TestCase):
         colast_names = ['order_num', 'date', 'trans', 'symbol', 'qty', 'price', 'after_hours']
         for col in colast_names:
             assert col in ref_database.tables['stocks'].columns, f"missing column {col}"
+        loop.close()
         
 def test(db):
     """
@@ -86,6 +94,7 @@ def test(db):
     assert 'stocks' in db, "stocks table should still exist here"
 
 async def async_test(db):
+    db = await db
     import random
     for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
         if table in db.tables:
@@ -230,6 +239,8 @@ async def async_test(db):
             )
         )
     await asyncio.gather(*new_departments)
+
+    print(db.tables['departments'][1001])
     
     positions = [
         {'id': 100101, 'name': 'Director', 'department_id': 1001},
@@ -427,4 +438,15 @@ async def async_test(db):
     print(sel)
     assert len(sel) < 1, "delete should have removed order_num 1"
 
+    # Update Data
+    #await db.tables['stocks'].update(
+    #    **{'symbol': 'NFLX', 'trans': {'type': 'SELL'}},
+    #    where={'order_num': 2}
+    #)
+    await db.tables['stocks'].set_item(2, {'symbol': 'NFLX', 'trans': {'type': 'SELL'}},)
+
+    # Select via __getitem__
+    sel = await db.tables['stocks'][2]
+    print(sel)
+    assert sel['trans']['type'] == 'SELL' and sel['symbol'] == 'NFLX', f"values not correctly updated"
 
