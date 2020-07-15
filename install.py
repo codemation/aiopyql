@@ -4,7 +4,7 @@ if __name__=='__main__':
     #Check for bin path - install in venv/bin/ if active - else /usr/bin/
     env = sys.prefix
     version = f'python{sys.version_info[0]}.{sys.version_info[1]}'
-    install_dir = f'{env}/lib/{version}/pyql'
+    install_dir = f'{env}/lib/{version}/aiopyql'
     if 'install' in sys.argv:
         try:
             os.makedirs(install_dir)
