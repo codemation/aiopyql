@@ -14,28 +14,36 @@ class TestData(unittest.TestCase):
         conf = ['user','password','host','port', 'db', 'type']
         config = {cnfVal: os.getenv(dbVal).rstrip() for dbVal,cnfVal in zip(env,conf)}
         config['debug'] = True
-        db = data.Database(
-            **config
-            )
 
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
+
+        db = data.Database(
+            loop=loop,
+            **config
+            )
+
+        # Start tests
         loop.run_until_complete(async_test(db))
         test(db)
         loop.close()
         
     def test_run_sqlite_test(self):
-        db = data.Database(
-            database="testdb",
-            debug=True
-            )
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
+
+        db = data.Database(
+            database="testdb",
+            loop=loop,
+            debug=True
+            )
         loop.run_until_complete(async_test(db))
         test(db)
         loop.close()
         ref_database = data.Database(
-            database="testdb"
+            database="testdb",
+            loop=loop,
+            debug=True
             )
         print(ref_database.tables)
         colast_names = ['order_num', 'date', 'trans', 'symbol', 'qty', 'price', 'after_hours']
@@ -82,7 +90,7 @@ async def async_test(db):
     for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
         if table in db.tables:
             await db.run(f'drop table {table}')
-            
+
     def check_sel(requested, selection):
         request_items = []
         if requested == '*':

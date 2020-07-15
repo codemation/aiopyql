@@ -6,6 +6,7 @@ import asyncio
 #Used for grouping columns with database class
 TableColumn = namedtuple('col', ['name', 'type', 'mods'])
 
+
 def get_db_manager(db_connect, db_type):
     """
     returns async generator which manages context
@@ -83,7 +84,6 @@ Sqlite3: Default
             database="testdb"
             )
     
-
 Mysql
 
         from aiopyql import data
@@ -98,7 +98,9 @@ Mysql
         
     """
     def __init__(self, **kw):
-        self.loop = kw['loop'] if 'loop' in kw else asyncio.new_event_loop()
+        #self.loop = asyncio.new_event_loop()
+        self.loop = asyncio.get_event_loop()
+        #self.loop = kw['loop'] if 'loop' in kw else asyncio.new_event_loop()
         self.type = 'sqlite' if not 'type' in kw else kw['type']
         if self.type == 'sqlite':
             import aiosqlite
@@ -123,10 +125,10 @@ Mysql
             self.foreign_keys = False
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
         self.tables = {}
-
-        self._run_async_task(
-            self.load_tables()
-        )
+        if not self.loop == None:
+            self._run_async_task(
+                self.load_tables()
+            )
     async def _run_async_task_in_loop(coro):
         return await coro
     def _run_async_task(self, coro):
