@@ -28,13 +28,17 @@ Use install script to install the aiopyql into the activated environment librari
 
 ### DB connection
 
-        import sqlite3
+Sqlite3: Default
+
         from aiopyql import data
 
         db = data.Database(
             database="testdb"
             )
     
+
+Mysql
+
         from aiopyql import data
 
         db = data.Database(
