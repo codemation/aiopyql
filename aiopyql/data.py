@@ -97,9 +97,14 @@ Mysql
             )
         
     """
+    @classmethod
+    async def create(cls, **kw):
+        db = Database(**kw)
+        await db.load_tables()
+        return db
     def __init__(self, **kw):
-        #self.loop = asyncio.new_event_loop()
-        self.loop = asyncio.get_event_loop()
+        self.loop = asyncio.new_event_loop()
+        #self.loop = asyncio.get_event_loop()
         #self.loop = kw['loop'] if 'loop' in kw else asyncio.new_event_loop()
         self.type = 'sqlite' if not 'type' in kw else kw['type']
         if self.type == 'sqlite':
