@@ -115,7 +115,8 @@ async def async_test(db):
     assert 'stocks' in db.tables, "table creation failed"
 
     for table in ['employees', 'positions', 'departments']:
-        await db.run(f'drop table {table}')
+        if table in db.tables:
+            await db.run(f'drop table {table}')
      
     await db.create_table(
         'departments', 
