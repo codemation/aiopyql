@@ -8,7 +8,7 @@ if __name__=='__main__':
     if 'install' in sys.argv:
         try:
             os.makedirs(install_dir)
-            os.system(f'cp pyql/*.py README.md {install_dir}')
+            os.system(f'cp aiopyql/*.py README.md {install_dir}')
             print("aiopyql successfully installed - see https://github.com/codemation/aiopyql for usage")
         except Exception as e:
             error = repr(e)
