@@ -142,7 +142,7 @@ Mysql
             tables_in_db_coro = self.get("select name, sql from sqlite_master where type = 'table'")
         else:
             tables_in_db_coro = self.get("show tables")
-        tables_in_db_result = self._run_async_tasks(tables_in_db_coro)
+        tables_in_db_result = self._run_async_tasks(tables_in_db_coro)[0]
         print(f"tables_in_db_result: {tables_in_db_result}")
         if len(tables_in_db_result) == 0:
             return False
@@ -713,7 +713,8 @@ class Table:
             #self.database.log.debug(f"__getitem__ - {self.database.loop}")
             val = self.database._run_async_tasks(
                 self.select('*', where={self.prim_key: key_val})
-            )
+            )[0]
+            self.database.log.debug(f"__getitem__  {val}")
             if not val == None and len(val) > 0:
                 if len(self.columns.keys()) == 2:
                     return val[0][self.__get_val_column()] # returns 
@@ -740,7 +741,7 @@ class Table:
             self.database.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
             error = "unable to use [] bracket syntax inside a running event loop as __setitem__ is not awaitable,  use tb.insert( tb.update("
             raise NotImplementedError(error)
-        return self.database._run_async_tasks(set_item_coro())
+        return self.database._run_async_tasks(set_item_coro())[0]
 
     def __contains__(self, key):
         if self[key] == None:
@@ -748,7 +749,7 @@ class Table:
         return True
     def __iter__(self):
         def gen():
-            for row in self.databse._run_async_tasks(self.select('*')):
+            for row in self.databse._run_async_tasks(self.select('*'))[0]:
                 yield row
         if 'running=True' in str(self.database.loop):
             self.database.log.debug(f"__iter__ called with running event loop {self.database.loop}")

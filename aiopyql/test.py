@@ -24,7 +24,9 @@ class TestData(unittest.TestCase):
         loop.run_until_complete(async_test(db))
 
         # test sync functions
-        db = data.Database(**config, loop=loop)
+        db = data.Database(**config)
+        db._run_async_tasks(db.load_tables())
+        
         test(db)
         loop.close()
         
@@ -41,17 +43,18 @@ class TestData(unittest.TestCase):
 
         # test sync functions
         db = data.Database(
-                loop=loop,
                 database="testdb",
                 debug=True
             )
+        db._run_async_tasks(db.load_tables())
         test(db)
         
         ref_database = data.Database(
             database="testdb",
-            loop=loop,
             debug=True
             )
+        ref_database._run_async_tasks(
+            ref_database.load_tables())
         print(ref_database.tables)
         colast_names = ['order_num', 'date', 'trans', 'symbol', 'qty', 'price', 'after_hours']
         for col in colast_names:
@@ -65,7 +68,6 @@ def test(db):
 
     # key - value col insertion using tb[keyCol] = valCol
     db.tables['keystore']['key1'] = 'value1'
-    assert 'key1' in db.tables['keystore'], "insertion failed using setitem"
     assert db.tables['keystore']['key1'] == 'value1', "value retrieval failed for key-value table"
 
     # key - value col update using setitem
