@@ -1,23 +1,23 @@
 # aioaiopyql
-Asyncio ORM(Object-relational mapping) for accessing, inserting, updating, deleting data within RBDMS tables using python
+Asyncio ORM(Object-relational mapping) for accessing, inserting, updating, deleting data within RBDMS tables using python, based on the synchronus ORM [pyql](https://github.com/codemation/pyql)
 
 ### Instalation
 
-    $ python3 -m venv env
+    $ virtualenv -p python3.7 aiopyql-env
 
-    $ source my-project/bin/activate
+    $ source aiopyql-env/bin/activate
 
-Install with PIP
+#### Install with PIP
 
-     (env)$ pip install aiopyql-db   
+     (aiopyql-env)$ pip install aiopyql
 
-Download & install Library from Github:
+#### Download & install Library from repo:
 
-    (env)$ git clone https://github.com/codemation/aiopyql.git
+    (aiopyql-env)$ git clone https://github.com/codemation/aiopyql.git
 
 Use install script to install the aiopyql into the activated environment libraries
 
-    (env)$ cd aiopyql; sudo ./install.py install
+    (aiopyql-env)$ cd aiopyql; sudo ./install.py install
 
 ### Compatable Databases - Currently
 
@@ -26,29 +26,48 @@ Use install script to install the aiopyql into the activated environment librari
 
 ## Getting Started 
 
+A Database object can be created both in and out of an event loop, but the Database.create() factory coro ensures
+load_tables() is processed to load existing tables. 
+
 ### DB connection
 
 Sqlite3: Default
 
         from aiopyql import data
+        import asyncio
 
-        db = data.Database(
-            database="testdb"
+        
+        async def main():
+
+            #sqlite connection
+            sqlite_db = await data.Database.create(
+                database="testdb" # if no type specified, default is sqlite
             )
-    
 
-Mysql
+            # mysql connection
+            mysql_db = await data.Database.create(
+                database='mysql_database',
+                user='mysqluser',
+                password='my-secret-pw',
+                host='localhost',
+                type='mysql'
+                )
 
-        from aiopyql import data
+            # more db logic goes here
 
-        db = data.Database(
-            database='mysql_database',
-            user='mysqluser',
-            password='my-secret-pw',
-            host='localhost',
-            type='mysql'
-            )
-Existing tables schemas within databases are loaded when database object is instantiated and ready for use immedielty.
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(main())
+
+Existing tables schemas within databases are loaded when database object is instantiated via .create and ready for use immedielty. 
+
+If created using db = data.Database(database='testdb'), which is synchronus, the .load_tables() coro must be run manually within an event loop or _run_async_tasks utility func
+
+        # synchronus 
+        db = data.Database(database='testdb')
+        db._run_async_tasks(db.load_tables())
+
+_run_async_tasks cannot be used within running event loop
+
 
 ### Table Create
 Requires List of at least 2 item tuples, max 3
@@ -65,7 +84,7 @@ See DB documentation for reference.
 Note: Unique constraints are not validated by aiopyql but at db, so if modifier is supported it will be added when table is created.
 
     # Table Create    
-    db.create_table(
+    await db.create_table(
         'stocks', 
         [    
             ('order_num', int, 'AUTO_INCREMENT'),
@@ -94,7 +113,7 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
 
 #### Creating Tables with Foreign Keys
 
-    db.create_table(
+    await db.create_table(
         'departments', 
         [    
             ('id', int, 'UNIQUE'),
@@ -103,7 +122,7 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
         'id' # Primary Key 
     )
 
-    db.create_table(
+    await db.create_table(
         'positions', 
         [    
             ('id', int, 'UNIQUE'),
@@ -120,7 +139,7 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
         }
     )
 
-    db.create_table(
+    await db.create_table(
         'employees', 
         [    
             ('id', int, 'UNIQUE'),
@@ -315,7 +334,7 @@ OR
 #### Special Examples:
 Bracket indexs can only be used for primary keys and return entire row, if existent
 
-    db.tables['employees'][1000] # Synchronus only
+    await db.tables['employees'][1000] 
     query:
         SELECT * FROM employees WHERE id=1000
     result:
@@ -346,7 +365,6 @@ Using list comprehension
             (1003, 'Clara Carson'),
             ...
         ]
-
 
 ### Update Data
 
@@ -382,6 +400,8 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
 
     db.tables['stocks'][2] = to_update # Synchronus only
 
+    await db.tables['stocks'].set_items(2, to_update)
+
     query:
         # check that primary_key value 2 exists
         SELECT * FROM stocks WHERE order_num=2
@@ -390,7 +410,7 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
         UPDATE stocks SET symbol = 'NTAP', trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', qty = 500 WHERE order_num=2
 
     result:
-        db.tables['stocks'][2] # Synchronus only
+        await db.tables['stocks'][2]
         {
             'order_num': 2, 
             'date': '2006-01-05', 
@@ -407,20 +427,3 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
     await db.tables['stocks'].delete(
         where={'order_num': 1}
         )
-
-### Other
-Table Exists
-
-    'employees' in db
-    query:
-        show tables
-    result:
-        True
-
-Primary Key Exists:
-
-    1000 in db.tables['employees']
-    query:
-        SELECT * FROM employees WHERE id=1000
-    result:
-        True
