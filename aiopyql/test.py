@@ -79,6 +79,10 @@ def test(db):
 
 async def async_test(db):
     import random
+    for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
+        if table in db.tables:
+            await db.run(f'drop table {table}')
+            
     def check_sel(requested, selection):
         request_items = []
         if requested == '*':
@@ -96,8 +100,7 @@ async def async_test(db):
 
 
     assert str(type(db)) == "<class 'data.Database'>", "failed to create data.Database object)"
-    if 'stocks' in db.tables:
-        await db.run('drop table stocks')
+
     await db.create_table(
         'stocks', 
         [    
@@ -114,9 +117,6 @@ async def async_test(db):
     print(db.tables['stocks'].columns)
     assert 'stocks' in db.tables, "table creation failed"
 
-    for table in ['employees', 'positions', 'departments']:
-        if table in db.tables:
-            await db.run(f'drop table {table}')
      
     await db.create_table(
         'departments', 
@@ -167,8 +167,6 @@ async def async_test(db):
     )
     assert 'employees' in db.tables, "table creation failed"
 
-
-    await db.run('drop table keystore')
     await db.create_table(
         'keystore', 
         [    
