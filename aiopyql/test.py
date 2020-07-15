@@ -96,7 +96,8 @@ async def async_test(db):
 
 
     assert str(type(db)) == "<class 'data.Database'>", "failed to create data.Database object)"
-    await db.run('drop table stocks')
+    if 'stocks' in db.tables:
+        await db.run('drop table stocks')
     await db.create_table(
         'stocks', 
         [    
@@ -113,10 +114,8 @@ async def async_test(db):
     print(db.tables['stocks'].columns)
     assert 'stocks' in db.tables, "table creation failed"
 
-
-    await db.run('drop table employees')
-    await db.run('drop table positions')
-    await db.run('drop table departments')
+    for table in ['employees', 'positions', 'departments']:
+        await db.run(f'drop table {table}')
      
     await db.create_table(
         'departments', 
