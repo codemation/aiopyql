@@ -130,10 +130,6 @@ Mysql
             self.foreign_keys = False
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
         self.tables = {}
-        if 'loop' in kw:
-            self._run_async_tasks(
-                self.load_tables()
-            )
     def _run_async_tasks(self, *args):
         return self.loop.run_until_complete(asyncio.gather(*args))
 
