@@ -104,7 +104,7 @@ Mysql
         return db
     def __init__(self, **kw):
         #self.loop = asyncio.new_event_loop()
-        self.loop = asyncio.get_event_loop() if not 'loop' in kw else kw['loop']
+        self.loop = None if not 'loop' in kw else kw['loop']
         #self.loop = kw['loop'] if 'loop' in kw else asyncio.new_event_loop()
         self.type = 'sqlite' if not 'type' in kw else kw['type']
         if self.type == 'sqlite':
@@ -131,14 +131,22 @@ Mysql
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
         self.tables = {}
     def _run_async_tasks(self, *args):
-        return self.loop.run_until_complete(asyncio.gather(*args))
+        if not self.loop == None:
+            raise NotImplementedError(f"_run_async_tasks method not allowed with an existing event loop {self.loop}")
+        self.loop = asyncio.get_event_loop()
+        if len(args) > 1:
+            result = self.loop.run_until_complete(asyncio.gather(*args))
+        else:
+            result = asyncio.get_event_loop().run_until_complete(*args)
+        self.loop = None
+        return result
 
     def __contains__(self, table):
         if self.type == 'sqlite':
             tables_in_db_coro = self.get("select name, sql from sqlite_master where type = 'table'")
         else:
             tables_in_db_coro = self.get("show tables")
-        tables_in_db_result = self._run_async_tasks(tables_in_db_coro)[0]
+        tables_in_db_result = self._run_async_tasks(tables_in_db_coro)
         print(f"tables_in_db_result: {tables_in_db_result}")
         if len(tables_in_db_result) == 0:
             return False
@@ -702,14 +710,14 @@ class Table:
                     return val[0][self.__get_val_column()] # returns 
                 return val[0]
             return None
-        if 'running=True' in str(self.database.loop):
-            self.database.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
+        if 'closed=False' in str(self.database.loop):
+            self.database.log.debug(f"__getitem__ called with event loop {self.database.loop}")
             return get_key_in_table()
         else:
-            self.database.log.debug(f"__getitem__ called without running event loop - {self.database.loop}")
-            val = self.database._run_async_tasks(
+            self.database.log.debug(f"__getitem__ called without event loop - {self.database.loop}")
+            val = self.database._run_async_tasks(   
                 self.select('*', where={self.prim_key: key_val})
-            )[0]
+            )
             self.database.log.debug(f"__getitem__  {val}")
             if not val == None and len(val) > 0:
                 if len(self.columns.keys()) == 2:
@@ -737,7 +745,7 @@ class Table:
             self.database.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
             error = "unable to use [] bracket syntax inside a running event loop as __setitem__ is not awaitable,  use tb.insert( tb.update("
             raise NotImplementedError(error)
-        return self.database._run_async_tasks(set_item_coro())[0]
+        return self.database._run_async_tasks(set_item_coro())
 
     def __contains__(self, key):
         if self[key] == None:
@@ -745,7 +753,7 @@ class Table:
         return True
     def __iter__(self):
         def gen():
-            for row in self.databse._run_async_tasks(self.select('*'))[0]:
+            for row in self.databse._run_async_tasks(self.select('*')):
                 yield row
         if 'running=True' in str(self.database.loop):
             self.database.log.debug(f"__iter__ called with running event loop {self.database.loop}")

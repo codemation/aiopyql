@@ -18,17 +18,17 @@ class TestData(unittest.TestCase):
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
 
-        db = data.Database.create(**config)
+        db = data.Database.create(**config, loop=loop)
 
         # Start tests
         loop.run_until_complete(async_test(db))
+        loop.close()
 
         # test sync functions
         db = data.Database(**config)
         db._run_async_tasks(db.load_tables())
         
         test(db)
-        loop.close()
         
     def test_run_sqlite_test(self):
         # create event loop & start test coro
@@ -37,10 +37,11 @@ class TestData(unittest.TestCase):
         # test async load inside event loop
         db = data.Database.create(
                 database="testdb",
+                loop=loop,
                 debug=True
             )
         loop.run_until_complete(async_test(db))
-
+        loop.close()
         # test sync functions
         db = data.Database(
                 database="testdb",
@@ -59,7 +60,7 @@ class TestData(unittest.TestCase):
         colast_names = ['order_num', 'date', 'trans', 'symbol', 'qty', 'price', 'after_hours']
         for col in colast_names:
             assert col in ref_database.tables['stocks'].columns, f"missing column {col}"
-        loop.close()
+       
         
 def test(db):
     """
@@ -242,7 +243,7 @@ async def async_test(db):
         )
     await asyncio.gather(*new_departments)
 
-    print(db.tables['departments'][1001])
+    print(await db.tables['departments'][1001])
     
     positions = [
         {'id': 100101, 'name': 'Director', 'department_id': 1001},
