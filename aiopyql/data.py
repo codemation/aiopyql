@@ -692,10 +692,10 @@ class Table:
 
     def __getitem__(self, key_val):
         """
-        returns is_key_in_table() coro if event loop is running 
+        returns get_key_in_table() coro if event loop is running 
         otherwise executes in new event loop and returns
         """
-        async def is_key_in_table():
+        async def get_key_in_table():
             val = await self.select('*', where={self.prim_key: key_val})
             if not val == None and len(val) > 0:
                 if len(self.columns.keys()) == 2:
@@ -704,9 +704,9 @@ class Table:
             return None
         if 'running=True' in str(self.database.loop):
             self.database.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
-            return is_key_in_table()
+            return get_key_in_table()
         else:
-            #self.database.log.debug(f"__getitem__ - {self.database.loop}")
+            self.database.log.debug(f"__getitem__ called without running event loop - {self.database.loop}")
             val = self.database._run_async_tasks(
                 self.select('*', where={self.prim_key: key_val})
             )[0]
