@@ -753,7 +753,7 @@ class Table:
         return True
     def __iter__(self):
         def gen():
-            for row in self.databse._run_async_tasks(self.select('*')):
+            for row in self.database._run_async_tasks(self.select('*')):
                 yield row
         if 'running=True' in str(self.database.loop):
             self.database.log.debug(f"__iter__ called with running event loop {self.database.loop}")
