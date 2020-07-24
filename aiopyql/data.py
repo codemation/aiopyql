@@ -169,6 +169,7 @@ Mysql
         query = query.split(';') if ';' in query else [query]
         async for conn in self.cursor(commit=commit):
             for q in query:
+                self.log.debug(f"{self.db_name} - execute: {q}")
                 if self.type == 'sqlite':
                     try:
                         async with conn.execute(q) as cursor:
