@@ -205,10 +205,29 @@ In-Line
 
         await db.tables['stocks'].insert(**trade)
         query:
-            INSERT INTO stocks (order_num, date, trans, symbol, qty, price, after_hours) VALUES (1, "2006-01-05", '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', "RHAT", 100, 35.14, True)
+            INSERT INTO stocks 
+                (
+                    order_num, 
+                    date, trans, 
+                    symbol, 
+                    qty, 
+                    price, 
+                    after_hours
+                ) 
+                VALUES 
+                    (
+                        1, 
+                        "2006-01-05", 
+                        '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
+                        "RHAT", 
+                        100, 
+                        35.14, 
+                        True
+                    )
         result:
             In:
-                db.tables['stocks'][1]['trans']['condition'] # synchronus - run outside of event loop
+                sel = await db.tables['stocks'][1]
+                print(sel['trans']['condition'])
             Out: #
                 {'limit': '36.00', 'time': 'end_of_trading_day'}
 
@@ -223,21 +242,31 @@ All Rows & Columns in table
 All Rows & Specific Columns 
 
     await db.tables['employees'].select(
-        'id', 'name', 'position_id'
+        'id', 
+        'name', 
+        'position_id'
         )
 
 All Rows & Specific Columns with Matching Values
 
     await db.tables['employees'].select(
-        'id', 'name', 'position_id', 
-        where={'id': 1000}
+        'id', 
+        'name', 
+        'position_id', 
+        where={
+            'id': 1000
+            }
         )
 
 All Rows & Specific Columns with Multple Matching Values
 
     await db.tables['employees'].select(
-        'id', 'name', 'position_id', 
-        where={'id': 1000, 'name': 'Frank Franklin'}
+        'id', 
+        'name', 
+        'position_id', 
+        where={
+            'id': 1000, 
+            'name': 'Frank Franklin'}
         )
 
 #### Advanced Usage:
@@ -249,10 +278,14 @@ All Rows & Columns from employees, Combining ALL Rows & Columns of table positio
     query:
         SELECT * FROM employees JOIN positions ON employees.position_id = positions.id
     output:
-        [{
-            'employees.id': 1000, 'employees.name': 'Frank Franklin', 
-            'employees.position_id': 100101, 'positions.name': 'Director', 
-            'positions.department_id': 1001},
+        [
+            {
+                'employees.id': 1000, 
+                'employees.name': 'Frank Franklin', 
+                'employees.position_id': 100101, 
+                'positions.name': 'Director', 
+                'positions.department_id': 1001
+            },
             ...
         ]
 All Rows & Specific Columns from employees, Combining All Rows & Specific Columns of table positions (if foreign keys match)
@@ -261,7 +294,7 @@ All Rows & Specific Columns from employees, Combining All Rows & Specific Column
     await db.tables['employees'].select(
         'employees.name', 
         'positions.name', 
-        join='positions'
+        join='positions' # # possible only if foreign key relation exists between employees & positions
         )
     query:
         SELECT employees.name,positions.name FROM employees JOIN positions ON employees.position_id = positions.id
@@ -278,12 +311,21 @@ All Rows & Specific Columns from employees, Combining All Rows & Specific Column
     await db.tables['employees'].select(
         'employees.name', 
         'positions.name', 
-        join='positions',
+        join='positions', # possible only if foreign key relation exists between employees & positions
         where={
             'positions.name': 'Director'}
         )
     query:
-        SELECT employees.name,positions.name FROM employees JOIN positions ON employees.position_id = positions.id WHERE positions.name='Director'
+        SELECT 
+            employees.name,
+            positions.name 
+        FROM 
+            employees 
+        JOIN positions 
+            ON 
+                employees.position_id = positions.id 
+        WHERE 
+            positions.name='Director'
     output:
         [
             {'employees.name': 'Frank Franklin', 'positions.name': 'Director'}, 
@@ -301,12 +343,32 @@ Note: join='x_table' will only work if the calling table has a f-key reference t
         'positions.name', 
         'departments.name', 
         join={
-            'positions': {'employees.position_id': 'positions.id'}, 
-            'departments': {'positions.department_id': 'departments.id'}
+            'positions': {
+                'employees.position_id': 'positions.id'
+                }, 
+            'departments': {
+                'positions.department_id': 'departments.id'
+                }
         }, 
-        where={'positions.name': 'Director'})
+        where={
+            'positions.name': 'Director'}
+        )
     query:
-        SELECT employees.name,positions.name,departments.name FROM employees JOIN positions ON employees.position_id = positions.id JOIN departments ON positions.department_id = departments.id WHERE positions.name='Director'
+        SELECT 
+            employees.name,positions.name,
+            departments.name 
+        FROM 
+            employees 
+        JOIN 
+            positions 
+                ON 
+                    employees.position_id = positions.id 
+        JOIN 
+            departments 
+                ON 
+                    positions.department_id = departments.id 
+        WHERE 
+            positions.name='Director'
     result:
         [
             {'employees.name': 'Frank Franklin', 'positions.name': 'Director', 'departments.name': 'HR'}, 
@@ -335,10 +397,33 @@ OR
 Bracket indexs can only be used for primary keys and return entire row, if existent
 
     await db.tables['employees'][1000] 
+
     query:
-        SELECT * FROM employees WHERE id=1000
+        SELECT * 
+        FROM 
+            employees 
+        WHERE 
+            id=1000
     result:
         {'id': 1000, 'name': 'Frank Franklin', 'position_id': 100101}
+
+Note: As  db.tables['employees'][1000] returns an 'awaitable', sub keys cannot be specified until the object has been 'awaited'
+
+    In: 
+        # Wrong
+        await db.tables['employees'][1000]['id']
+    Out:
+        __main__:1: RuntimeWarning: coroutine was never awaited
+        RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+        Traceback (most recent call last):
+        File "<stdin>", line 1, in <module>
+        TypeError: 'coroutine' object is not subscriptable
+    
+    # Right
+        sel = await db.tables['employees'][1000]
+        sel['id]
+
+
     
 Iterate through table - grab all rows - allowing client side filtering 
 
@@ -375,31 +460,60 @@ Define update values in-line or un-pack
         where={'order_num': 1}
         )
     query:
-        UPDATE stocks SET symbol = 'NTAP', trans = 'SELL' WHERE order_num=1
+        UPDATE stocks 
+                SET 
+                    symbol = 'NTAP', 
+                    trans = 'SELL' 
+                WHERE 
+                    order_num=1
 
 Un-Pack
 
-    #JSON capable Data 
-    tx_data = {'type': 'BUY', 'condition': {'limit': '36.00', 'time': 'end_of_trading_day'}}
-    to_update = {'symbol': 'NTAP', 'trans': tx_data}
-    where = {'order_num': 1}
+    # JSON Serializable Data 
+    tx_data = {
+        'type': 'BUY', 
+        'condition': {
+            'limit': '36.00', 
+            'time': 'end_of_trading_day'
+            }
+        }
+    to_update = {
+        'symbol': 'NTAP', 
+        'trans': tx_data # dict
+        }
 
     await db.tables['stocks'].update(
         **to_update, 
-        where=where
+        where={'order_num': 1}
         )
     query:
-        UPDATE stocks SET symbol = 'NTAP', trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}' WHERE order_num=1
+        UPDATE stocks 
+            SET 
+                symbol = 'NTAP', 
+                trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}' 
+            WHERE 
+                order_num=1
 
 Bracket Assigment - Primary Key name assumed inside Brackets for value
 
-    #JSON capable Data 
+    #JSON Serializable Data 
 
-    tx_data = {'type': 'BUY', 'condition': {'limit': '36.00', 'time': 'end_of_trading_day'}}
-    to_update = {'symbol': 'NTAP', 'trans': tx_data, 'qty': 500}
+    tx_data = {
+        'type': 'BUY', 
+        'condition': {
+            'limit': '36.00', 
+            'time': 'end_of_trading_day'
+            }
+        }
+    to_update = {
+        'symbol': 'NTAP', 
+        'trans': tx_data, # dict
+        'qty': 500}
 
-    db.tables['stocks'][2] = to_update # Synchronus only
+    # Synchronus only
+    db.tables['stocks'][2] = to_update 
 
+    # Asynchronus
     await db.tables['stocks'].set_item(2, to_update)
 
     query:
@@ -407,14 +521,27 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
         SELECT * FROM stocks WHERE order_num=2
 
         # update 
-        UPDATE stocks SET symbol = 'NTAP', trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', qty = 500 WHERE order_num=2
+        UPDATE stocks 
+            SET
+                symbol = 'NTAP', 
+                trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
+                qty = 500 
+            WHERE order_num=2
 
     result:
         await db.tables['stocks'][2]
+        
+        # beutified
         {
             'order_num': 2, 
             'date': '2006-01-05', 
-            'trans': {'type': 'BUY', 'condition': {'limit': '36.00', 'time': 'end_of_trading_day'}}, 
+            'trans': {
+                'type': 'BUY', 
+                'condition': {
+                    'limit': '36.00', 
+                    'time': 'end_of_trading_day'
+                }
+            }, 
             'symbol': 'NTAP', 
             'qty': 500, 
             'price': 35.16, 
