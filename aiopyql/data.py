@@ -176,12 +176,16 @@ Mysql
                             async for row in cursor:
                                 results.append(row)
                     except Exception as e:
-                        results.append(repr(e))
+                        self.log.exception(f"exception running query: {q}")
                 if self.type == 'mysql':
-                    # MYSQL conn should be iterated over for results
-                    await conn.execute(q)
-                    async for row in conn:
-                        results.append(row)
+                    try:
+                        # MYSQL conn should be iterated over for results
+                        await conn.execute(q)
+                        async for row in conn:
+                            results.append(row)
+                    except Exception as e:
+                        self.log.exception(f"exception running query: {q}")
+
         return results
             
     async def run(self, query):
