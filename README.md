@@ -233,7 +233,6 @@ In-Line
 
         
 ### Select Data
-#### Basic Usage:
 
 All Rows & Columns in table
 
@@ -375,7 +374,9 @@ Note: join='x_table' will only work if the calling table has a f-key reference t
             {'employees.name': 'Elly Doe', 'positions.name': 'Director', 'departments.name': 'Sales'}
         ]
 
-Special Note: When performing multi-table joins, joining columns must be explicity provided. The key-value order is not explicity important, but will determine which column name is present in returned rows
+Special Note: When performing multi-table joins, joining columns must be explicity provided. 
+<br>The key-value order is not explicity important, but will determine which column name is present in returned rows
+
 
     join={'y_table': {'y_table.id': 'x_table.y_id'}}
     result:
@@ -391,6 +392,104 @@ OR
             {'x_table.a': 'val1', 'x_table.y_id': 'val2'},
             {'x_table.a': 'val1', 'x_table.y_id': 'val3'}
         ]
+
+#### Operators
+
+The Following operators are supported within the list query syntax
+
+'=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'
+
+Operator Syntax Requires a list-of-lists and supports multiple combined conditions
+
+    #Syntax
+
+    await db.tables['table'].select(
+        '*',
+        where=[[condition1], [condition2], [condition3]]
+    )
+
+
+    await db.tables['table'].select(
+        '*',
+        where=[
+            ['col1', 'like', 'abc*'],               # Wildcards 
+            ['col2', '<', 10],                      # Value Comparison
+            ['col3', 'not in', ['a', 'b', 'c'] ]    # Inclusion / Exclusion
+        ]
+    )
+
+Examples:
+
+Search for rows which contain specified chars using wild card '*' 
+
+    find_employee = await db.tables['employees'].select(
+        'id', 
+        'name',
+        where=[
+            ['name', 'like', '*ank*'] # Double Wild Card - Search
+        ]
+    )
+    query:
+        SELECT id,name FROM employees WHERE name like '%ank%'
+    result:
+        [
+            {'id': 1016, 'name': 'Frank Franklin'}, 
+            {'id': 1018, 'name': 'Joe Franklin'}, 
+            {'id': 1034, 'name': 'Dana Franklin'}, 
+            {'id': 1036, 'name': 'Jane Franklin'}, 
+            {'id': 1043, 'name': 'Eli Franklin'}, 
+        ]
+
+
+Delete Rows matching value comparison
+
+
+    delete_department = await db.tables['departments'].delete(
+        where=[
+            ['id', '<', 2000] # Value Comparison
+        ]
+    )
+    query:
+        DELETE 
+            FROM 
+                departments 
+            WHERE 
+                id < 2000
+
+Select Rows using Join and exluding rows with sepcific values
+
+    join_sel = db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'not in', ['Manager', 'Intern', 'Rep'] # Exclusion within Join
+            ],
+            [
+                'positions.department_id', '<>', 2001                    # Exclusion via NOT EQUAL
+            ]
+        ]
+    )
+    query:
+        SELECT 
+            * 
+        FROM 
+            employees 
+        JOIN 
+            positions 
+            ON 
+                employees.position_id = positions.id  
+            AND  
+                positions.id = employees.position_id 
+        WHERE 
+            positions.name not in ('Manager', 'Intern', 'Rep') 
+        AND 
+            positions.department_id <> 2001
 
 
 #### Special Examples:

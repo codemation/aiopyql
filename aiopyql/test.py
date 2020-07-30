@@ -359,6 +359,137 @@ async def async_test(db):
     )
     assert len(join_sel) == 60, f"expected number of employee's' is {60}, found {len(join_sel)}"
 
+   # Like Operator Usage
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            ['positions.name', 'like', 'Dir*']
+        ]
+    )
+    assert len(join_sel) == 4, f"expected number of employee's' is {4}, found {len(join_sel)}"
+
+    # In operator Usage
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'in', ['Manager', 'Director']
+            ]
+        ]
+    )
+    assert len(join_sel) == 12, f"expected number of employee's' is {12}, found {len(join_sel)}"
+
+
+    # Not in Operator Usage
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'not in', ['Manager', 'Intern', 'Rep']
+            ]
+        ]
+    )
+    assert len(join_sel) == 4, f"expected number of employee's' is {4}, found {len(join_sel)}"
+
+    # Not in Operator Usage
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'not in', ['Manager', 'Intern', 'Rep']
+            ],
+            {
+                "positions.id": 100101
+            }
+        ]
+    )
+    assert len(join_sel) == 1, f"expected number of employee's' is {1}, found {len(join_sel)}"
+
+    # Less Than Operator Usage
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'not in', ['Manager', 'Intern', 'Rep']
+            ],
+            [
+                'positions.department_id', '<', 2000
+            ]
+        ]
+    )
+    assert len(join_sel) == 1, f"expected number of employee's' is {1}, found {len(join_sel)}"   
+
+    # Less Than Operator Usage + 'not in'
+
+    join_sel = await db.tables['employees'].select(
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        },
+        where=[
+            [
+                'positions.name', 'not in', ['Manager', 'Intern', 'Rep']
+            ],
+            [
+                'positions.department_id', '<>', 2001 # not equal
+            ]
+        ]
+    )
+    assert len(join_sel) == 3, f"expected number of employee's' is {3}, found {len(join_sel)}"  
+
+    delete_department = await db.tables['departments'].delete(
+        where=[
+            ['id', '<', 2000]
+        ]
+    )
+
+    find_employee = await db.tables['employees'].select(
+        'id', 
+        'name',
+        where=[
+            ['name', 'like', '*ank*']
+        ]
+    )
+    assert len(find_employee) > 0, f"expected at least 1 employee, found {len(find_employee)}"
+
     
     # * select #
     sel = await db.tables['stocks'].select('*')

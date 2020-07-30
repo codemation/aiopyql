@@ -442,26 +442,110 @@ class Table:
 
     def __where(self, kw):
         where_sel = ''
-        index = 0
         kw = self._process_input(kw)
         if 'where' in kw:
             and_value = 'WHERE '
-            for col_name,v in kw['where'].items():
-                if '.' in col_name:
+
+            def get_valid_table_column(col_name, **kw):
+                dot_table = False
+                if isinstance(col_name, str) and '.' in col_name:
+                    dot_table = True
                     table, column = col_name.split('.')
                 else:
                     table, column = self.name, col_name
                 if not column in self.database.tables[table].columns:
-                    raise InvalidInputError(f"{column} is not a valid column in table {table}", "invalid column specified for 'where'")
-                table = self.database.tables[table]
-                eq = '=' if not v == 'NULL' else ' IS '
-                #json check
-                if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
-                    where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
-                else:
-                    val = v if table.columns[column].type is not str else f"'{v}'"
-                    where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
-                and_value = ' AND '
+                    if 'no_raise' in kw and not dot_table:
+                        pass
+                    else:
+                        raise InvalidInputError(
+                            f"{column} is not a valid column in table {table}", 
+                            "invalid column specified for 'where'")
+                return table, column
+
+            supported_operators = {'=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'}
+            if isinstance(kw['where'], list):
+                for condition in kw['where']:
+                    if not type(condition) in [dict, list]:
+                        raise InvalidInputError(
+                            f"{condition} is not a valid type within where=[]", 
+                            "invalid subcondition type within where=[], expected type(list, dict)"
+                            )
+                    if isinstance(condition, list):
+                        if not len(condition) == 3:
+                            cond_len = len(condition)
+                            raise InvalidInputError(
+                                f"{condition} has {cond_len} items, expected 3", 
+                                f"{condition} has {cond_len} items, expected 3"
+                        )
+                        condition1 = f"{condition[0]}"
+                        operator = condition[1]
+                        condition2 = condition[2]
+
+                        table, column = None, None
+                        # expecting comparison operators
+                        if not operator in supported_operators:
+                            raise InvalidInputError(
+                                f"Invalid operator {operator} within {condition}", f"supported operators [{supported_operators}]"
+                            )
+                        for i, value in enumerate([condition1, condition2]):
+                            if i == 0:
+                                table, column = get_valid_table_column(value)
+                                pass
+                            if i == 1 and 'in' in operator:
+                                # in operators should be proceeded by a list of values
+                                if not isinstance(condition2, list):
+                                    raise InvalidInputError(
+                                        f"Invalid use of operator '{operator}' within {condition}", 
+                                        f"'in' should be proceeded by ['list', 'of', 'values'] not {type(condition2)} - {condition2}"
+                                    )
+                                if self.database.tables[table].columns[column].type == str:
+                                    condition2 = [f"'{cond}'" for cond in condition2]
+                                else:
+                                    condition2 = [str(cond) for cond in condition2]
+                                condition2 = ', '.join(condition2)
+                                condition2 = f"({condition2})"
+                                break
+                            if i == 1:
+                                get_valid_table_column(value, no_raise=True)
+                                """still raises if dot_table used & not in table """
+                                pass
+
+                        if 'like' in operator:
+                            condition2 = f"{condition2}"
+                            if not '*' in condition2:
+                                condition2 = f"'%{condition2}%'"
+                            else:
+                                condition2 = '%'.join(condition2.split('*'))
+                                condition2 = f"'{condition2}'"
+
+                        
+                        where_sel = f"{where_sel}{and_value}{condition1} {operator} {condition2}"
+                    if isinstance(condition, dict):
+                        for col_name, v in condition.items():
+                            table, column = get_valid_table_column(col_name)
+                            table = self.database.tables[table]
+                            eq = '=' if not v == 'NULL' else ' IS '
+                            #json check
+                            if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
+                                where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
+                            else:
+                                val = v if table.columns[column].type is not str else f"'{v}'"
+                                where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
+
+                    and_value = ' AND '
+                        
+            if isinstance(kw['where'], dict):
+                for col_name, v in kw['where'].items():
+                    table, column = get_valid_table_column(col_name)
+                    table = self.database.tables[table]
+                    eq = '=' if not v == 'NULL' else ' IS '
+                    #json check
+                    if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
+                        where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
+                    else:
+                        val = v if table.columns[column].type is not str else f"'{v}'"
+                        where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
+                    and_value = ' AND '
         return where_sel
     def _join(self, kw):
         join = ''
