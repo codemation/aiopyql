@@ -3,4 +3,4 @@ if __name__=='__main__':
     version = sys.stdin.readline().rstrip()
     if '(' in version and ')' in version:
         version = version[1:5]
-        print(f"{str(float(version)+0.01)[0:5]}")
+        print(f"{str(float(version)+0.001)[0:5]:.3f}")
