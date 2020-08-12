@@ -30,9 +30,7 @@ A Database object can be created both in and out of an event loop, but the Datab
 load_tables() is processed to load existing tables. 
 
 ### DB connection
-
-Sqlite3: Default
-
+W
         from aiopyql import data
         import asyncio
 
@@ -68,6 +66,49 @@ If created using db = data.Database(database='testdb'), which is synchronus, the
 
 _run_async_tasks cannot be used within running event loop
 
+### Forking, Threads & Cache Saftey
+The data.Database object can be safely forked by a parent proccess or shared amoung threads IF CACHE IS DISABLED. As all communication occurs via separate atomic transactions in the database, the only expected deviation is time-based. Data read is data written.  
+
+Cache cannot be trusted if table changes occur amoung parelell threads / forked processes, as data read may be from Cache and threads / forked processes cannot propogate their state amoung each other. 
+
+The benifits provided by cache can greately improve the performance of an application, but so when caching is enabled, a single process should be allowed access to write to the database. 
+
+### Database Read Cache 
+Database read cache provides read query based caching. This cache is accessed when a duplicate query is received before any table changes. This is capable of providing relief for more expensive & less explicit querries that might span multiple tables ( via table joins ). 
+
+Database cache is invalidated the query references a table where a change occured - INSERT - UPDATE - DELETE
+
+Database cache is enabled by passing 'cache_enabled=True' into data.Database(..) or by setting db.cache_enabled=True 
+
+
+    from aiopyql import data
+    import asyncio
+
+    
+    async def main():
+
+        #sqlite connection - with cache
+
+        sqlite_db = await data.Database.create(
+            database="testdb",   # if no type specified, default is sqlite
+            cache_enabled=True,  # Default False
+            cache_length=256     # Default 128 if cache is enabled
+        )
+
+        # mysql connection - with cache
+
+        mysql_db = await data.Database.create(
+            database='mysql_database',
+            user='mysqluser',
+            password='my-secret-pw',
+            host='localhost',
+            type='mysql',
+            cache_enabled=True,
+            cache_length=512 
+        )
+
+        # more db logic goes here
+
 
 ### Table Create
 Requires List of at least 2 item tuples, max 3
@@ -77,6 +118,10 @@ Requires List of at least 2 item tuples, max 3
 - column_name - str - database column name exclusions apply
 - types: str, int, float, byte, bool, None # JSON dumpable dicts fall under str types
 - modifiers: NOT NULL, UNIQUE, AUTO_INCREMENT
+
+Optional:
+- cache_enabled = True|False
+- max_cache_len = 125 #Default
 
 Note Some differences may apply for column options i.e AUTOINCREMENT(sqlite) vs AUTO_INCREMENT(mysql) - 
 See DB documentation for reference.
@@ -136,7 +181,9 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
                 'ref': 'id',
                 'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
             }
-        }
+        },
+        cache_enabled=True,
+        cache_length=128
     )
 
     await db.create_table(
@@ -154,7 +201,32 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
                 'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
             }
         }
+        cache_enabled=True,
+        cache_length=256
     )
+
+#### Table Cache
+
+Table cache is a row based read cache, which is able to return cached rows based on table primary key, and thus rewards querries that utilize primary keys. 
+
+Table cache can work together with Database cache for faster querries as generic 'select *' querries will load both Database & Table Cache, but Table Cache will persist much longer if frequent table changes are expected 
+
+Table cache differs from the Database cache in that table changes do not invalidate table cache, they update the cache. 
+
+Table cache expires upon reaching 'max_cache_len' or a deletion of a corresponding row. 
+
+Table Cache is enabled by passing cache_enabled=True into db.create_table() enabled/disabled at any time using db.table['table'].cache_enabled = True|False. 
+
+Cache is loaded in the following events:
+- A complete row is accessed via select = '*', with our without conditions
+- A complete row is inserted # Complete meaning value for all rows in table
+
+Cache is updated in the folloiwng events:
+- An update is issued which includes conditions matching a cached row' primary key
+
+Cache is deleted in the following events:
+- A Delete is issued against a row with cached primary key
+- Table max_cache_len is reached and the row was the oldest of the last referenced keys
 
     
 ### Insert Data

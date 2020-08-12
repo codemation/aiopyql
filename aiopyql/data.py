@@ -1,11 +1,10 @@
 from contextlib import contextmanager
-from collections import namedtuple
-import json, re, logging
+from collections import namedtuple, deque
+import json, re, logging, time
 import asyncio
 
 #Used for grouping columns with database class
 TableColumn = namedtuple('col', ['name', 'type', 'mods'])
-
 
 def get_db_manager(db_connect, db_type):
     """
@@ -116,6 +115,7 @@ Mysql
         self.debug = 'DEBUG' if 'debug' in kw else None
         self.log = kw['logger'] if 'logger' in kw else None
         self.setup_logger(self.log, level=self.debug)
+
         self.connect_params =  ['user', 'password', 'database', 'db', 'host', 'port']
         self.connect_config = {}
         for k,v in kw.items():
@@ -130,6 +130,27 @@ Mysql
             self.foreign_keys = False
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
         self.tables = {}
+
+        # cache
+        self.cache_enabled = False if not 'cache_enabled' in kw else kw['cache_enabled']
+        self.cache = None
+        if self.cache_enabled:
+            self.enable_cache(**kw)
+    def enable_cache(self, **kw):
+        """
+        enables cache if cache is None
+        does not run if cache exists, should be disabled first via .disable_cache
+        """
+        if self.cache == None:
+            self.cache_enabled = True
+            self.max_cache_len = 125 if not 'max_cache_len' in kw else kw['max_cache_len']
+            self.cache = Cache(self)
+        else:
+            self.log.warning("enable_cache called while cache exists, first disable & then enable")
+    def disable_cache(self, **kw):
+        if not self.cache == None:
+            self.cache = None
+            self.cache_enabled = False
     def _run_async_tasks(self, *args):
         if not self.loop == None:
             raise NotImplementedError(f"_run_async_tasks method not allowed with an existing event loop {self.loop}")
@@ -155,14 +176,27 @@ Mysql
         if logger == None:
             level = logging.DEBUG if level == 'DEBUG' else logging.ERROR
             logging.basicConfig(
-                        level=level,
-                        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-                        datefmt='%m-%d %H:%M'
+                level=level,
+                format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                datefmt='%m-%d %H:%M'
             )
             self.log = logging.getLogger()
             self.log.setLevel(level)
         else:
             self.log = logger
+    def cache_check(self, query):
+        """
+        checks 
+        """
+        if not 'SELECT' in query:
+            cache_to_clear = set()
+            for cache, _ in self.cache:
+                for table in self.tables:
+                    if table in cache:
+                        cache_to_clear.add(cache)
+                        break
+            for cache in cache_to_clear:
+                del self.cache[cache]
     async def execute(self, query, commit=False):
         results = []
         query = f"{';'.join(self.pre_query + [query])}"
@@ -171,27 +205,21 @@ Mysql
             for q in query:
                 self.log.debug(f"{self.db_name} - execute: {q}")
                 if self.type == 'sqlite':
-                    try:
-                        async with conn.execute(q) as cursor:
-                            async for row in cursor:
-                                results.append(row)
-                    except Exception as e:
-                        self.log.exception(f"exception running query: {q}")
-                if self.type == 'mysql':
-                    try:
-                        # MYSQL conn should be iterated over for results
-                        await conn.execute(q)
-                        async for row in conn:
+                    async with conn.execute(q) as cursor:
+                        async for row in cursor:
                             results.append(row)
-                    except Exception as e:
-                        self.log.exception(f"exception running query: {q}")
-
+                if self.type == 'mysql':
+                    await conn.execute(q)
+                    async for row in conn:
+                        results.append(row)
         return results
             
     async def run(self, query):
         """
         Run query with commit
         """
+        if self.cache_enabled:
+            self.cache_check(query)
         return await self.execute(query, commit=True)
     async def get(self, query, commit=False):
         """
@@ -199,7 +227,14 @@ Mysql
         Default:
             commit=False
         """
-        return await self.execute(query, commit=False)
+        if self.cache_enabled:
+            self.cache_check(query)
+            if query in self.cache:
+                return self.cache[query]
+        result = await self.execute(query, commit=False)
+        if self.cache_enabled and query in self.cache:
+            self.cache[query] = result
+        return result
     async def load_tables(self):
         if self.type == 'sqlite':
             tables_in_db_coro = await self.get("select name, sql from sqlite_master where type = 'table'")
@@ -246,9 +281,9 @@ Mysql
                         parent_table, mods = ref.split(')')
                         parent_table, parent_key = parent_table.split('(')
                         foreign_keys[no_blanks(local_key)] = {
-                                    'table': no_blanks(parent_table), 
-                                    'ref': no_blanks(parent_key),
-                                    'mods': mods.rstrip()
+                            'table': no_blanks(parent_table), 
+                            'ref': no_blanks(parent_key),
+                            'mods': mods.rstrip()
                                 }
                 # Create tables
                 primary_key = None
@@ -309,9 +344,9 @@ Mysql
                             parent_table, mods = ref.split(')')
                             parent_table, parent_key = parent_table.split('(')
                             foreign_keys[no_blanks(local_key)] = {
-                                        'table': no_blanks(inner(parent_table, '`', '`')), 
-                                        'ref': no_blanks(inner(parent_key, '`', '`')),
-                                        'mods': mods.rstrip()
+                                'table': no_blanks(inner(parent_table, '`', '`')), 
+                                'ref': no_blanks(inner(parent_key, '`', '`')),
+                                'mods': mods.rstrip()
                                     }
                 table = inner(table, '`', '`')
                 await self.create_table(table, cols_in_table, primary_key, foreign_keys=foreign_keys, existing=True)
@@ -344,13 +379,13 @@ Mysql
         if not 'existing' in kw:
             await self.tables[name].create_schema()
         return f"table {name} created"
-        
 
 
 class Table:
     def __init__(self, name, database, columns, prim_key = None, **kw):
         self.name = name
         self.database = database
+        self.log = self.database.log
         self.types = {int,str,float,bool,bytes}
         self.TRANSLATION = {
             'integer': int,
@@ -359,18 +394,44 @@ class Table:
             'boolean': bool,
             'blob': bytes 
         }
+        
+        self.cache_enabled = False if not 'cache_enabled' in kw else kw['cache_enabled']
+        self.max_cache_len = 125 if not 'cache_length' in kw else kw['cache_length']
+        self.cache = None
+        if self.cache_enabled:
+            self.enable_cache(**kw)
+
         self.columns = {}
         for c in columns:
             if not c.type in self.types:
-                raise InvalidColumnType(f"input type: {type(c.type)} of {c}", f"invalid type provided for column, supported types {self.types}")
+                raise InvalidColumnType(
+                    f"input type: {type(c.type)} of {c}", 
+                    f"invalid type provided for column, supported types {self.types}"
+                )
             if c.name in self.columns:
-                raise InvalidInputError(f"duplicate column name {c.name} provided", f"column names may only be specified once for table objects")
+                raise InvalidInputError(
+                    f"duplicate column name {c.name} provided", 
+                    f"column names may only be specified once for table objects"
+                )
             self.columns[c.name] = c
         if prim_key is not None:
             self.prim_key = prim_key if prim_key in self.columns else None
         self.foreign_keys = kw['foreign_keys'] if 'foreign_keys' in kw else None
-            
-        #self.create_schema()
+    def enable_cache(self, **kw):
+        """
+        enables cache if cache is None
+        does not run if cache exists, should be disabled first via .disable_cache
+        """
+        if self.cache == None:
+            self.cache_enabled = True
+            self.max_cache_len = 125 if not 'max_cache_len' in kw else kw['max_cache_len']
+            self.cache = Cache(self)
+        else:
+            self.log.warning("enable_cache called while cache exists, first disable & then enable")
+    def disable_cache(self, **kw):
+        if not self.cache == None:
+            self.cache = None
+            self.cache_enabled = False
     def get_schema(self):
         constraints = ''
         cols = '('
@@ -401,7 +462,7 @@ class Table:
         return schema
     async def create_schema(self):
         return await self.database.run(self.get_schema())
-    def _process_input(self, kw):
+    def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
             if isinstance(kw['join'], dict):
@@ -411,6 +472,9 @@ class Table:
             else:
                 if kw['join'] in self.database.tables:
                     tables.append(self.database.tables[kw['join']])
+        return tables
+    def _process_input(self, kw):
+        tables = self.get_tables_from_input(kw)
         def verify_input(where):
             for table in tables:
                 for col_name, col in table.columns.items():
@@ -420,7 +484,8 @@ class Table:
                             if col.type == str and type(where[col_name]) == dict:
                                 where[col_name] = f"'{col.type(json.dumps(where[col_name]))}'"
                                 continue
-                            where[col_name] = col.type(where[col_name]) if not where[col_name] == None else 'NULL'
+                            print(f"{col_name} in {where}")
+                            where[col_name] = col.type(where[col_name]) if not where[col_name] in [None, 'NULL'] else 'NULL'
                         else:
                             try:
                                 where[col_name] = col.type(int(where[col_name])) if table.database.type == 'mysql' else int(col.type(int(where[col_name])))
@@ -431,7 +496,7 @@ class Table:
                                 elif 'false' in where[col_name].lower():
                                     where[col_name] = False if table.database.type == 'mysql' else 0
                                 else:
-                                    self.database.log.warning(f"Unsupported value {where[col_name]} provide for column type {col.type}")
+                                    self.log.warning(f"Unsupported value {where[col_name]} provide for column type {col.type}")
                                     del(where[col_name])
                                     continue
             return where
@@ -554,7 +619,7 @@ class Table:
         for join_table, condition in kw['join'].items():
             if not join_table in self.database.tables:
                 error = f"{join_table} does not exist in database"
-                raise InvalidInputError(error, f"valid tables {list(t for t in self.database.tables)}")
+                raise InvalidInputError(error, f"valid tables are {list(t for t in self.database.tables)}")
             count = 0
             for col1, col2 in condition.items():
                 for col in [col1, col2]:
@@ -587,7 +652,8 @@ class Table:
             # Using Primary key only
             sel = tb[0] # select * from <table> where <table_prim_key> = <val>
         """
-
+        col_select = list(selection) if not isinstance(selection, list) else selection
+        col_select = [i for i in col_select]
 
         if 'join' in kw and isinstance(kw['join'], str):
             if kw['join'] in [self.foreign_keys[k]['table'] for k in self.foreign_keys]:
@@ -595,11 +661,13 @@ class Table:
                     if foreign_key['table'] == kw['join']:
                         kw['join'] = {
                             foreign_key['table']: {
-                                f"{self.name}.{local_key}": f"{foreign_key['table']}.{foreign_key['ref']}"}
-                                }
+                                f"{self.name}.{local_key}": f"{foreign_key['table']}.{foreign_key['ref']}"
+                            }
+                        }
             else:
                 error = f"join table {kw['join']} specified without specifying matching columns or tables do not share keys"
                 raise InvalidInputError(error, f"valid foreign_keys {self.foreign_keys}")
+        cache_new_rows = True
         if '*' in selection:
             selection = '*'
             if 'join' in kw:
@@ -631,6 +699,9 @@ class Table:
                 col_refs = self.columns
                 keys = list(self.columns.keys())
         else:
+            # only cache complete rows using '*'  
+            cache_new_rows = False
+
             col_refs = {}
             keys = []
             for col in selection:
@@ -645,10 +716,45 @@ class Table:
                 col_refs[col] = self.columns[col]
                 keys.append(col)
             selection = ','.join(selection)
+
+        # validates where conditions provided and where query
+        where_sel = self.__where(kw)
+
         join = ''
         if 'join' in kw:
-            join = self._join(kw)        
-        where_sel = self.__where(kw)
+            # validate join usage
+            join = self._join(kw)
+
+            cache_new_rows = False
+        else:
+            # join statements cannot return cached rows with 
+            # cache check
+            if 'where' in kw and isinstance(kw['where'], dict) and self.cache_enabled:
+                cached_row = None
+                for column, value in kw['where'].items():
+                    # primary key used in where statement
+                    if column == self.prim_key:
+                        # check if value exists in cache
+                        if value in self.cache:
+                            cached_row = self.cache[value]
+                # check cached_row against other where conditions
+                # As primary key was used, we know only 1 row should ever 
+                # exist so remaining conditions can be safely validated
+                if not cached_row == None:
+                    for column, value in kw['where'].items():
+                        if column == self.prim_key:
+                            continue
+                        # check cached value against 'where' value
+                        if not cached_row[column] == value:
+                            # no rows match condition
+                            return []
+                    # return cache row
+                    self.log.debug("## cache used ##")
+                    if '*' in selection:
+                        return [cached_row]
+                    else:
+                        return [{sel: cached_row[sel]} for sel in col_select]
+
         orderby = ''
         if 'orderby' in kw:
             if not kw['orderby'] in self.columns:
@@ -661,7 +767,12 @@ class Table:
             where = where_sel,
             order = orderby
         )
-        rows = await self.database.get(query)
+        try:
+            rows = await self.database.get(query)
+        except Exception as e:
+            self.log.exception(f"Exception while selecting data in {self.name} ")
+            cache_new_rows = False
+            rows = []
 
         #dictonarify each row result and return
         to_return = []
@@ -675,9 +786,13 @@ class Table:
                         else:
                             r_dict[keys[i]] = v if not col_refs[keys[i]].type == bool else bool(v)
                     except Exception as e:
-                        self.database.log.exception(f"error processing results on row {row} index {i} value {v} with {keys}")
+                        self.log.exception(f"error processing results on row {row} index {i} value {v} with {keys}")
                         assert False
                 to_return.append(r_dict)
+        if cache_new_rows and self.cache_enabled:
+            for row in to_return:
+                value_to_cache = row[self.prim_key]
+                self.cache[value_to_cache] = row
         return to_return
     async def insert(self, **kw):
         """
@@ -695,15 +810,17 @@ class Table:
         cols = '('
         vals = '('
         #checking input kw's for correct value types
-
+        add_to_cache = False
         kw = self._process_input(kw)
-
+        if len(kw) == len(self.columns):
+            add_to_cache = True
         for col_name, col in self.columns.items():
             if not col_name in kw:
                 if not col.mods == None:
                     if 'NOT NULL' in col.mods and not 'INCREMENT' in col.mods:
                         raise InvalidInputError(f'{col_name} is a required field for INSERT in table {self.name}', "correct and try again")
                 continue
+
             if len(cols) > 2:
                 cols = f'{cols}, '
                 vals = f'{vals}, '
@@ -719,8 +836,15 @@ class Table:
         vals = vals + ')'
 
         query = f'INSERT INTO {self.name} {cols} VALUES {vals}'
-        self.database.log.debug(query)
-        return await self.database.run(query)
+        self.log.debug(query)
+        try:
+            result = await self.database.run(query)
+            if add_to_cache and self.cache_enabled:
+                self.log.debug("## cache add - from insertion ##")
+                self.cache[kw[self.prim_key]] = kw
+                
+        except Exception as e:
+            self.log.exception(f"exception inserting into {self.name}")
     async def set_item(self, key, values):
         async def set_item_coro():
             if not await self[key] == None:
@@ -734,13 +858,62 @@ class Table:
             if len(values) == len(self.columns):
                 return await self.insert(**values)
         return await set_item_coro()
-    async def update(self,**kw):
+
+    async def modify_cache(self, action, where_kw, updated_data=None):
+        """ 
+        called for updates  or deletions
+            action: 'update'|'delete'
+            where_kw: {'where': {'column1': 'value'}}
+        """
+        if 'where' in where_kw and isinstance(where_kw['where'], dict):
+            self.log.debug(f"modify_cache {action} called with {where_kw} and {updated_data}")
+            cache_to_modify = {}
+            rows_to_check = []
+            if self.prim_key in where_kw['where']:
+                prim_key = where_kw['where'][self.prim_key]
+                if prim_key in self.cache:
+                    row = self.cache[prim_key]
+                    cache_to_modify[prim_key] = row
+                    rows_to_check.append(row)
+                    where_kw['where'].pop(self.prim_key)
+                else:
+                    return
+                for column, value in where_kw['where'].items():
+                    if not cache_to_modify[prim_key][column] == value:
+                        return # No cache to modify matching value
+            else: # No Table Primary key used in where_kw['where']
+                for column, value in where_kw['where'].items():
+                    for cache, row in self.cache:
+                        if row[column] == value and not cache in cache_to_modify:
+                            rows_to_check.append(row)
+                            cache_to_modify[cache] = row
+                for column, value in where_kw['where'].items():
+                    for row in rows_to_check:
+                        if not row[column] == value:
+                            cache_to_modify.pop(row[self.prim_key])
+            # All cache rows to modify now ready 
+            for cache in cache_to_modify:
+                if action == 'update':
+                    for c, v in updated_data.items():
+                        self.cache[cache][c] = v
+                        self.log.debug(f"## {self.name} cache updated ##")
+                if action == 'delete':
+                    del self.cache[cache]
+                    self.log.debug(f"## {self.name} cache deleted ##")
+    async def update(self, **kw):
         """
         Usage:
             db.tables['stocks'].update(symbol='NTAP',trans='SELL', where={'order_num': 1})
         """
-        
+        where_kw = {'where': {}}
+        where_kw['where'].update(kw['where'])
+        set_kw = {}
+        set_kw.update(kw)
+        set_kw.pop('where')
+
         kw = self._process_input(kw)
+        where_kw_sel = kw.pop('where')
+
 
         cols_to_set = ''
         for col_name, col_val in kw.items():
@@ -755,14 +928,25 @@ class Table:
                 column_value = col_val if self.columns[col_name].type is not str else f"'{col_val}'"
             cols_to_set = f'{cols_to_set}{col_name} = {column_value}'
 
-        where_sel = self.__where(kw)
+
+
+        where_sel = self.__where(where_kw_sel)
+
         query = 'UPDATE {name} SET {cols_vals} {where}'.format(
             name=self.name,
             cols_vals=cols_to_set,
             where=where_sel
         )
-        self.database.log.debug(query)
-        return await self.database.run(query)
+        #self.log.debug(query)
+        #return await self.database.run(query)
+
+        try:
+            result = await self.database.run(query)
+            if self.cache_enabled:
+                await self.modify_cache('update', where_kw, set_kw)
+            return result
+        except Exception as e:
+            return self.log.exception(f"Exception updating row for {self.name}")
     async def delete(self, all_rows=False, **kw):
         """
         Usage:
@@ -773,6 +957,8 @@ class Table:
             where_sel = self.__where(kw)
         except Exception as e:
             return repr(e)
+        # cache check - invalidate cache if existing
+        
         if len(where_sel) < 1 and not all_rows:
             error = "where statment is required with DELETE, otherwise specify .delete(all_rows=True)"
             raise InvalidInputError(error, "correct & try again later")
@@ -780,7 +966,14 @@ class Table:
             name=self.name,
             where=where_sel
         )
-        return await self.database.run(query)
+        try:
+            result = await self.database.run(query)
+            if self.cache_enabled:
+                await self.modify_cache('delete', kw)
+            return result
+        except Exception as e:
+            return self.log.exception(f"Exception deleting row from {self.name}")
+
     def __get_val_column(self):
         if len(self.columns.keys()) == 2:
             for key in list(self.columns.keys()):
@@ -800,14 +993,14 @@ class Table:
                 return val[0]
             return None
         if 'closed=False' in str(self.database.loop):
-            self.database.log.debug(f"__getitem__ called with event loop {self.database.loop}")
+            self.log.debug(f"__getitem__ called with event loop {self.database.loop}")
             return get_key_in_table()
         else:
-            self.database.log.debug(f"__getitem__ called without event loop - {self.database.loop}")
+            self.log.debug(f"__getitem__ called without event loop - {self.database.loop}")
             val = self.database._run_async_tasks(   
                 self.select('*', where={self.prim_key: key_val})
             )
-            self.database.log.debug(f"__getitem__  {val}")
+            self.log.debug(f"__getitem__  {val}")
             if not val == None and len(val) > 0:
                 if len(self.columns.keys()) == 2:
                     return val[0][self.__get_val_column()] # returns 
@@ -821,17 +1014,20 @@ class Table:
         """
         async def set_item_coro():
             if not await self[key] == None:
+                """ UPDATE """
                 if not isinstance(values, dict) and len(self.columns.keys()) == 2:
                     return await self.update(**{self.__get_val_column(): values}, where={self.prim_key: key})
                 return await self.update(**values, where={self.prim_key: key})
+            """ INSERT - value Dictionary"""
             if not isinstance(values, dict) and len(self.columns.keys()) == 2:
                 return await self.insert(**{self.prim_key: key, self.__get_val_column(): values})
+            #TODO - Not sure if this one is used
             if len(self.columns.keys()) == 2 and isinstance(values, dict) and not self.prim_key in values:
                 return await self.insert(**{self.prim_key: key, self.__get_val_column(): values})
             if len(values) == len(self.columns):
                 return await self.insert(**values)
         if 'running=True' in str(self.database.loop):
-            self.database.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
+            self.log.debug(f"__getitem__ called with running event loop {self.database.loop}")
             error = "unable to use [] bracket syntax inside a running event loop as __setitem__ is not awaitable,  use tb.insert( tb.update("
             raise NotImplementedError(error)
         return self.database._run_async_tasks(set_item_coro())
@@ -845,7 +1041,7 @@ class Table:
             for row in self.database._run_async_tasks(self.select('*')):
                 yield row
         if 'running=True' in str(self.database.loop):
-            self.database.log.debug(f"__iter__ called with running event loop {self.database.loop}")
+            self.log.debug(f"__iter__ called with running event loop {self.database.loop}")
             error = "unable to use __iter__ in a running event loop,  use async for in <coro> instead"
             raise NotImplementedError(error)
         return gen()
@@ -854,6 +1050,67 @@ class Table:
             for row in await self.select('*'):
                 yield row
         return gen()
+
+class Cache:
+    """
+    Used for managing cache rotation & retention, max len
+    """
+    def __init__(self, parent, **kw):
+        self.parent = parent
+        self.cache = {}
+        self.log = self.parent.log
+        self.timestamp_to_cache = {}
+        self.access_history = deque()
+        self.max_len = self.parent.max_cache_len
+    def check_max_len_and_clear(self):
+        if len(self.timestamp_to_cache) >= self.max_len:
+            while len(self.timestamp_to_cache) >= self.max_len:
+                cache_time = self.access_history.popleft()
+                if cache_time in self.timestamp_to_cache:
+                    _, cache_key = self.timestamp_to_cache[cache_time]
+                    del self.timestamp_to_cache[cache_time]
+                    if cache_key in self.cache and not self.cache[cache_key] == cache_time:
+                        continue
+                    del self.cache[cache_key]
+                    self.log.warning(f"# cach_key '{cache_key}' cleared due to cache lenght of {self.max_len} exceeded")
+    def update_timestamp(self, cached_key):
+        if cached_key in self:
+            old_time = self.cache[cached_key]
+            new_time = time.time()
+            self.timestamp_to_cache[new_time] = self.timestamp_to_cache[old_time]
+            del self.timestamp_to_cache[old_time]
+            self.cache[cached_key] = new_time
+            self.access_history.append(new_time)
+    def __iter__(self):
+        def cache_generator():
+            for cache_key, timestamp in self.cache.items():
+                yield cache_key, self.timestamp_to_cache[timestamp][0]
+        return cache_generator()
+    def __getitem__(self, cached_key):
+        if cached_key in self:
+            cache_time = self.cache[cached_key]
+            if cache_time in self.timestamp_to_cache:
+                cache_row = self.timestamp_to_cache[cache_time][0]
+                self.update_timestamp(cached_key)
+                return cache_row
+    def __setitem__(self, cached_key, row):
+        cache_time = time.time()
+        if cached_key in self.cache:
+            old_cache_time = self.cache[cached_key]
+            del self.timestamp_to_cache[old_cache_time]
+        self.cache[cached_key] = cache_time
+        self.timestamp_to_cache[cache_time] = row, cached_key
+        self.access_history.append(cache_time)
+        self.check_max_len_and_clear()
+    def __delitem__(self, cached_key):
+        if cached_key in self.cache:
+            cache_time = self.cache[cached_key]
+            self.log.warning(f'## {self.parent.name} cache "{cached_key}" deleted ##')
+            del self.timestamp_to_cache[cache_time]
+            del self.cache[cached_key]
+    def __contains__(self, cached_key):
+        return cached_key in self.cache
+
 class Error(Exception):
     pass
 class InvalidInputError(Error):

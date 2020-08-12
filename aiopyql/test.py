@@ -18,8 +18,12 @@ class TestData(unittest.TestCase):
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
 
-        db = data.Database.create(**config, loop=loop)
-
+        db = data.Database.create(
+            **config,
+            cache_enabled=True, 
+            loop=loop
+        )
+        
         # Start tests
         loop.run_until_complete(async_test(db))
         loop.close()
@@ -27,9 +31,8 @@ class TestData(unittest.TestCase):
         # test sync functions
         db = data.Database(**config)
         db._run_async_tasks(db.load_tables())
-        
+        #db.enable_cache()
         test(db)
-        
     def test_run_sqlite_test(self):
         # create event loop & start test coro
         loop = asyncio.new_event_loop()
@@ -37,6 +40,7 @@ class TestData(unittest.TestCase):
         # test async load inside event loop
         db = data.Database.create(
                 database="testdb",
+                cache_enabled=True,
                 loop=loop,
                 debug=True
             )
@@ -48,6 +52,7 @@ class TestData(unittest.TestCase):
                 debug=True
             )
         db._run_async_tasks(db.load_tables())
+        #db.enable_cache()
         test(db)
         
         ref_database = data.Database(
@@ -132,7 +137,8 @@ async def async_test(db):
             ('price', float),
             ('after_hours', bool)
         ], 
-        'order_num' # Primary Key 
+        'order_num', # Primary Key
+        cache_enabled=True
     )
     print(db.tables['stocks'].columns)
     assert 'stocks' in db.tables, "table creation failed"
@@ -145,7 +151,8 @@ async def async_test(db):
             ('name', str)
 
         ], 
-        'id' # Primary Key 
+        'id', # Primary Key 
+        cache_enabled=True
     )
     assert 'departments' in db.tables, "table creation failed"
 
@@ -160,11 +167,12 @@ async def async_test(db):
         'id', # Primary Key
         foreign_keys={
             'department_id': {
-                    'table': 'departments', 
-                    'ref': 'id',
-                    'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
+                'table': 'departments', 
+                'ref': 'id',
+                'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
             }
-        }
+        },
+        cache_enabled=True
     )
     assert 'positions' in db.tables, "table creation failed"
 
@@ -179,11 +187,12 @@ async def async_test(db):
         'id', # Primary Key
         foreign_keys={
             'position_id': {
-                    'table': 'positions', 
-                    'ref': 'id',
-                    'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
+                'table': 'positions', 
+                'ref': 'id',
+                'mods': 'ON UPDATE CASCADE ON DELETE CASCADE'
             }
-        }
+        },
+        cache_enabled=True
     )
     assert 'employees' in db.tables, "table creation failed"
 
@@ -193,7 +202,8 @@ async def async_test(db):
             ('env', str, 'UNIQUE NOT NULL'),
             ('val', str)
         ], 
-        'env' # Primary Key 
+        'env', # Primary Key
+        cache_enabled=True 
     )
 
     assert 'keystore' in db.tables, "table creation failed"
@@ -237,9 +247,7 @@ async def async_test(db):
     new_departments = []
     for department in departments:
         new_departments.append(
-            asyncio.create_task(
-                db.tables['departments'].insert(**department)
-            )
+            db.tables['departments'].insert(**department)
         )
     await asyncio.gather(*new_departments)
 
@@ -281,9 +289,7 @@ async def async_test(db):
     for position in positions:
         print(position)
         new_positions.append(
-            asyncio.create_task(
-                db.tables['positions'].insert(**position)
-            )
+            db.tables['positions'].insert(**position)
         )
         if position['name'] == 'Director':
             add_employee(employee_id, 1, position['id'])
@@ -302,9 +308,7 @@ async def async_test(db):
     new_employees = []
     for employee in employees:
         new_employees.append(
-            asyncio.create_task(
-                db.tables['employees'].insert(**employee)
-            )
+            db.tables['employees'].insert(**employee)
         )
     await asyncio.gather(*new_employees)
     # Select Data
@@ -349,13 +353,13 @@ async def async_test(db):
 
     # join select - testing multiple single table conditions
     join_sel = await db.tables['employees'].select(
-            '*', 
-            join={
-                'positions': {
-                            'employees.position_id':'positions.id', 
-                            'positions.id': 'employees.position_id'
-                            }
-                }
+        '*', 
+        join={
+            'positions': {
+                'employees.position_id':'positions.id', 
+                'positions.id': 'employees.position_id'
+            }
+        }
     )
     assert len(join_sel) == 60, f"expected number of employee's' is {60}, found {len(join_sel)}"
 
@@ -549,10 +553,6 @@ async def async_test(db):
     print(sel)
     assert sel['trans']['type'] == 'SELL' and sel['symbol'] == 'NTAP', f"values not correctly updated"
 
-
-
-
-
     # update data - use None Value
     await db.tables['stocks'].update(
         symbol=None,trans=tx_data,
@@ -584,3 +584,9 @@ async def async_test(db):
     print(sel)
     assert sel['trans']['type'] == 'SELL' and sel['symbol'] == 'NFLX', f"values not correctly updated"
 
+    import sys
+    
+    for table in db.tables:
+        print(f"## SIZE OF CACHE - {sys.getsizeof(db.tables[table].cache)} ##")
+        print(f"## {table.upper()} CACHE ##")
+        print(db.tables[table].cache)
