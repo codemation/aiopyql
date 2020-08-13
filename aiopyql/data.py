@@ -811,7 +811,13 @@ class Table:
         vals = '('
         #checking input kw's for correct value types
         add_to_cache = False
+        
+        # copy insertion before modification / validation
+        insert_values = {}
+        insert_values.update(kw)
+
         kw = self._process_input(kw)
+        
         if len(kw) == len(self.columns):
             add_to_cache = True
         for col_name, col in self.columns.items():
@@ -841,7 +847,7 @@ class Table:
             result = await self.database.run(query)
             if add_to_cache and self.cache_enabled:
                 self.log.debug("## cache add - from insertion ##")
-                self.cache[kw[self.prim_key]] = kw
+                self.cache[kw[self.prim_key]] = insert_values
                 
         except Exception as e:
             self.log.exception(f"exception inserting into {self.name}")
@@ -953,6 +959,8 @@ class Table:
             db.tables['stocks'].delete(where={'order_num': 1})
             db.tables['stocks'].delete(all_rows=True)
         """
+        del_where_sel = {}
+        del_where_sel.update(kw)
         try:
             where_sel = self.__where(kw)
         except Exception as e:
@@ -969,7 +977,7 @@ class Table:
         try:
             result = await self.database.run(query)
             if self.cache_enabled:
-                await self.modify_cache('delete', kw)
+                await self.modify_cache('delete', del_where_sel)
             return result
         except Exception as e:
             return self.log.exception(f"Exception deleting row from {self.name}")
