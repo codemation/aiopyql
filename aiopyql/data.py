@@ -749,11 +749,14 @@ class Table:
                             # no rows match condition
                             return []
                     # return cache row
-                    self.log.debug("## cache used ##")
                     if '*' in selection:
+                        self.log.debug(f"## cache - SELECT * - {cached_row} ##")
                         return [cached_row]
                     else:
-                        return [{sel: cached_row[sel]} for sel in col_select]
+                        cached_row = {sel: cached_row[sel] for sel in col_select}
+                        self.log.debug(f"## cache - SELECT {col_select} - {cached_row} ##")
+                        return [cached_row]
+                        #return [{sel: cached_row[sel]} for sel in col_select]
 
         orderby = ''
         if 'orderby' in kw:
