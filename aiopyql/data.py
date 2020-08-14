@@ -461,7 +461,10 @@ class Table:
         schema = f"CREATE TABLE {self.name} {cols}{comma}{constraints})"
         return schema
     async def create_schema(self):
-        return await self.database.run(self.get_schema())
+        try:
+            return await self.database.run(self.get_schema())
+        except Exception as e:
+            return server.database.exception(f"Exception encountered creating schema")
     def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
