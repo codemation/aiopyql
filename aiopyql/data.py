@@ -913,12 +913,13 @@ class Table:
         """
         where_kw = {'where': {}}
         where_kw['where'].update(kw['where'])
+
         set_kw = {}
         set_kw.update(kw)
         set_kw.pop('where')
 
         kw = self._process_input(kw)
-        where_kw_sel = kw.pop('where')
+        #where_kw_sel = kw.pop('where')
 
 
         cols_to_set = ''
@@ -936,7 +937,7 @@ class Table:
 
 
 
-        where_sel = self.__where(where_kw_sel)
+        where_sel = self.__where(kw)
 
         query = 'UPDATE {name} SET {cols_vals} {where}'.format(
             name=self.name,
