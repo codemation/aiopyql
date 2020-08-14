@@ -464,7 +464,7 @@ class Table:
         try:
             return await self.database.run(self.get_schema())
         except Exception as e:
-            return server.database.exception(f"Exception encountered creating schema")
+            return self.database.exception(f"Exception encountered creating schema")
     def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
