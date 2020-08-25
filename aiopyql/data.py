@@ -168,7 +168,6 @@ Mysql
         else:
             tables_in_db_coro = self.get("show tables")
         tables_in_db_result = self._run_async_tasks(tables_in_db_coro)
-        print(f"tables_in_db_result: {tables_in_db_result}")
         if len(tables_in_db_result) == 0:
             return False
         return table in [i[0] for i in tables_in_db_result]
@@ -196,6 +195,7 @@ Mysql
                         cache_to_clear.add(cache)
                         break
             for cache in cache_to_clear:
+                self.log.debug(f"## db cache deleted - query {cache}")
                 del self.cache[cache]
     async def execute(self, query, commit=False):
         results = []
@@ -230,9 +230,11 @@ Mysql
         if self.cache_enabled:
             self.cache_check(query)
             if query in self.cache:
+                self.log.debug(f"## db cache used - query {query}")
                 return self.cache[query]
         result = await self.execute(query, commit=False)
         if self.cache_enabled and query in self.cache:
+            self.log.debug(f"## db cache added - query {query}")
             self.cache[query] = result
         return result
     async def load_tables(self):
@@ -489,7 +491,6 @@ class Table:
                             if col.type == str and type(where[col_name]) == dict:
                                 where[col_name] = f"'{col.type(json.dumps(where[col_name]))}'"
                                 continue
-                            print(f"{col_name} in {where}")
                             where[col_name] = col.type(where[col_name]) if not where[col_name] in [None, 'NULL'] else 'NULL'
                         else:
                             try:
@@ -917,18 +918,23 @@ class Table:
     async def update(self, **kw):
         """
         Usage:
-            db.tables['stocks'].update(symbol='NTAP',trans='SELL', where={'order_num': 1})
+            db.tables['stocks'].update(
+                symbol='NTAP',
+                trans='SELL', 
+                where={
+                        'order_num': 1
+                    }
+            )
         """
         where_kw = {'where': {}}
         where_kw['where'].update(kw['where'])
 
+        # creates copy of input set vars for cache
         set_kw = {}
         set_kw.update(kw)
         set_kw.pop('where')
 
         kw = self._process_input(kw)
-        #where_kw_sel = kw.pop('where')
-
 
         cols_to_set = ''
         for col_name, col_val in kw.items():
@@ -943,8 +949,7 @@ class Table:
                 column_value = col_val if self.columns[col_name].type is not str else f"'{col_val}'"
             cols_to_set = f'{cols_to_set}{col_name} = {column_value}'
 
-
-
+        # process where selection for db query
         where_sel = self.__where(kw)
 
         query = 'UPDATE {name} SET {cols_vals} {where}'.format(
@@ -952,29 +957,33 @@ class Table:
             cols_vals=cols_to_set,
             where=where_sel
         )
-        #self.log.debug(query)
-        #return await self.database.run(query)
 
         try:
+            # run db query 
             result = await self.database.run(query)
+
+            # update cache values if enabled
             if self.cache_enabled:
                 await self.modify_cache('update', where_kw, set_kw)
             return result
         except Exception as e:
             return self.log.exception(f"Exception updating row for {self.name}")
+
     async def delete(self, all_rows=False, **kw):
         """
         Usage:
             db.tables['stocks'].delete(where={'order_num': 1})
             db.tables['stocks'].delete(all_rows=True)
         """
+
+        # create a copy of where selection for cache usage
         del_where_sel = {}
         del_where_sel.update(kw)
+
         try:
             where_sel = self.__where(kw)
         except Exception as e:
             return repr(e)
-        # cache check - invalidate cache if existing
         
         if len(where_sel) < 1 and not all_rows:
             error = "where statment is required with DELETE, otherwise specify .delete(all_rows=True)"
@@ -1089,7 +1098,7 @@ class Cache:
                     if cache_key in self.cache and not self.cache[cache_key] == cache_time:
                         continue
                     del self.cache[cache_key]
-                    self.log.warning(f"# cach_key '{cache_key}' cleared due to cache lenght of {self.max_len} exceeded")
+                    self.log.warning(f"# cach_key '{cache_key}' cleared due to cache length of {self.max_len} exceeded")
     def update_timestamp(self, cached_key):
         if cached_key in self:
             old_time = self.cache[cached_key]
