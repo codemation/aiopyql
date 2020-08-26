@@ -1136,7 +1136,8 @@ class Cache:
         if cached_key in self.cache:
             cache_time = self.cache[cached_key]
             self.log.warning(f'## {self.parent} cache "{cached_key}" deleted ##')
-            del self.timestamp_to_cache[cache_time]
+            if cache_time in self.timestamp_to_cache:
+                del self.timestamp_to_cache[cache_time]
             del self.cache[cached_key]
     def __contains__(self, cached_key):
         return cached_key in self.cache
