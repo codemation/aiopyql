@@ -233,7 +233,7 @@ Mysql
                 self.log.debug(f"## db cache used - query {query}")
                 return self.cache[query]
         result = await self.execute(query, commit=False)
-        if self.cache_enabled and query in self.cache:
+        if self.cache_enabled:
             self.log.debug(f"## db cache added - query {query}")
             self.cache[query] = result
         return result
