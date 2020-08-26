@@ -136,6 +136,8 @@ Mysql
         self.cache = None
         if self.cache_enabled:
             self.enable_cache(**kw)
+    def __str__(self):
+        return self.db_name
     def enable_cache(self, **kw):
         """
         enables cache if cache is None
@@ -419,6 +421,8 @@ class Table:
         if prim_key is not None:
             self.prim_key = prim_key if prim_key in self.columns else None
         self.foreign_keys = kw['foreign_keys'] if 'foreign_keys' in kw else None
+    def __str__(self):
+        return f"{self.database} {self.name}"
     def enable_cache(self, **kw):
         """
         enables cache if cache is None
@@ -1098,7 +1102,7 @@ class Cache:
                     if cache_key in self.cache and not self.cache[cache_key] == cache_time:
                         continue
                     del self.cache[cache_key]
-                    self.log.warning(f"# cach_key '{cache_key}' cleared due to cache length of {self.max_len} exceeded")
+                    self.log.warning(f"# {self.parent} cach_key '{cache_key}' cleared due to cache length of {self.max_len} exceeded")
     def update_timestamp(self, cached_key):
         if cached_key in self:
             old_time = self.cache[cached_key]
@@ -1131,7 +1135,7 @@ class Cache:
     def __delitem__(self, cached_key):
         if cached_key in self.cache:
             cache_time = self.cache[cached_key]
-            self.log.warning(f'## {self.parent.name} cache "{cached_key}" deleted ##')
+            self.log.warning(f'## {self.parent} cache "{cached_key}" deleted ##')
             del self.timestamp_to_cache[cache_time]
             del self.cache[cached_key]
     def __contains__(self, cached_key):
