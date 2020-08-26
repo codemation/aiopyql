@@ -30,11 +30,10 @@ A Database object can be created both in and out of an event loop, but the Datab
 load_tables() is processed to load existing tables. 
 
 ### DB connection
-W
-        from aiopyql import data
-        import asyncio
 
-        
+        import asyncio
+        from aiopyql import data
+
         async def main():
 
             #sqlite connection
@@ -81,10 +80,9 @@ Database cache is invalidated the query references a table where a change occure
 Database cache is enabled by passing 'cache_enabled=True' into data.Database(..) or by setting db.cache_enabled=True 
 
 
-    from aiopyql import data
     import asyncio
+    from aiopyql import data
 
-    
     async def main():
 
         #sqlite connection - with cache
