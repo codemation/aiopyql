@@ -1134,11 +1134,10 @@ class Cache:
         self.check_max_len_and_clear()
     def __delitem__(self, cached_key):
         if cached_key in self.cache:
-            cache_time = self.cache[cached_key]
+            cache_time = self.cache.pop(cached_key)
             self.log.warning(f'## {self.parent} cache "{cached_key}" deleted ##')
             if cache_time in self.timestamp_to_cache:
                 del self.timestamp_to_cache[cache_time]
-            del self.cache[cached_key]
     def __contains__(self, cached_key):
         return cached_key in self.cache
 
