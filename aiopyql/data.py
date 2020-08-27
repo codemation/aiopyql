@@ -194,16 +194,20 @@ Mysql
         """
         checks 
         """
-        if not 'SELECT' in query:
-            cache_to_clear = set()
-            for cache, _ in self.cache:
-                for table in self.tables:
-                    if table in cache:
+        if 'SELECT' in query:
+            return
+        # non - select
+
+        cache_to_clear = set()
+        for cache, _ in self.cache:
+            for table in self.tables:
+                if f"JOIN {table}" in cache or f'FROM {table}' in cache:
+                    if table in query:
                         cache_to_clear.add(cache)
                         break
-            for cache in cache_to_clear:
-                self.log.debug(f"## db cache deleted - query {cache}")
-                del self.cache[cache]
+        for cache in cache_to_clear:
+            self.log.debug(f"## db cache deleted - query {cache}")
+            del self.cache[cache]
     async def execute(self, query, commit=False):
         results = []
         query = f"{';'.join(self.pre_query + [query])}"
@@ -227,7 +231,17 @@ Mysql
         """
         if self.cache_enabled:
             self.cache_check(query)
-        return await self.execute(query, commit=True)
+        try:
+            return await self.execute(query, commit=True)
+        
+        # handle sqlite3.OperationalError: database is locked
+        except Exception as e:
+            if 'database is locked' in f"{e}":
+                await asyncio.sleep(0.001)
+                return await self.execute(query, commit=True)
+            # handle rest of exceptions up-stream
+            raise e
+
     async def get(self, query, commit=False):
         """
         Run query with optional commit. Typically used for select query. 
@@ -1140,7 +1154,6 @@ class Cache:
     def __delitem__(self, cached_key):
         if cached_key in self.cache:
             cache_time = self.cache.pop(cached_key)
-            self.log.warning(f'## {self.parent} cache "{cached_key}" deleted ##')
             if cache_time in self.timestamp_to_cache:
                 del self.timestamp_to_cache[cache_time]
     def __contains__(self, cached_key):
