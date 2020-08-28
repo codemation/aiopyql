@@ -253,7 +253,9 @@ Mysql
             self.cache_check(query)
             if query in self.cache:
                 self.log.debug(f"## db cache used - query {query}")
-                return self.cache[query]
+                result = self.cache[query]
+                if len(result) > 0:
+                    return result
         result = await self.execute(query, commit=False)
         if self.cache_enabled:
             self.log.debug(f"## db cache added - query {query}")
@@ -1106,13 +1108,13 @@ class Cache:
     Used for managing cache rotation & retention, max len
     """
     def __init__(self, parent, **kw):
-        self.locked = False
         self.parent = parent
         self.cache = {}
         self.log = self.parent.log
         self.timestamp_to_cache = {}
         self.access_history = deque()
         self.max_len = self.parent.max_cache_len
+        self.locked = False
     def check_max_len_and_clear(self):
         if len(self.timestamp_to_cache) >= self.max_len:
             while len(self.timestamp_to_cache) >= self.max_len:
