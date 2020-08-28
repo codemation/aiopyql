@@ -1106,6 +1106,7 @@ class Cache:
     Used for managing cache rotation & retention, max len
     """
     def __init__(self, parent, **kw):
+        self.locked = False
         self.parent = parent
         self.cache = {}
         self.log = self.parent.log
@@ -1133,7 +1134,7 @@ class Cache:
             self.access_history.append(new_time)
     def __iter__(self):
         def cache_generator():
-            for cache_key, timestamp in self.cache.items():
+            for cache_key, timestamp in self.cache.copy().items():
                 yield cache_key, self.timestamp_to_cache[timestamp][0]
         return cache_generator()
     def __getitem__(self, cached_key):
