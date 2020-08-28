@@ -199,12 +199,13 @@ Mysql
         # non - select
 
         cache_to_clear = set()
+        table_in_query = None
+        for table in self.tables:
+            if table in query:
+                table_in_query = table
         for cache, _ in self.cache:
-            for table in self.tables:
-                if f"JOIN {table}" in cache or f'FROM {table}' in cache:
-                    if table in query:
-                        cache_to_clear.add(cache)
-                        break
+            if f"JOIN {table_in_query}" in cache or f'FROM {table_in_query}' in cache:
+                cache_to_clear.add(cache)
         for cache in cache_to_clear:
             self.log.debug(f"## db cache deleted - query {cache}")
             del self.cache[cache]
