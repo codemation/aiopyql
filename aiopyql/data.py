@@ -201,7 +201,10 @@ Mysql
         cache_to_clear = set()
         table_in_query = None
         for table in self.tables:
-            if table in query:
+            if (f"UPDATE {table}" in query or 
+                f"INTO {table}" in query or
+                f"FROM {table}" in query
+                ):
                 table_in_query = table
         for cache, _ in self.cache:
             if f"JOIN {table_in_query}" in cache or f'FROM {table_in_query}' in cache:
