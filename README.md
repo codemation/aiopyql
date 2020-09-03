@@ -1,4 +1,4 @@
-# aioaiopyql
+# aiopyql
 Asyncio ORM(Object-relational mapping) for accessing, inserting, updating, deleting data within RBDMS tables using python, based on the synchronus ORM [pyql](https://github.com/codemation/pyql)
 
 ### Instalation
