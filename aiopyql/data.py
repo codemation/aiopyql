@@ -257,7 +257,7 @@ Mysql
             if query in self.cache:
                 self.log.debug(f"## db cache used - query {query}")
                 result = self.cache[query]
-                if len(result) > 0:
+                if not result == None and len(result) > 0:
                     return result
         result = await self.execute(query, commit=False)
         if self.cache_enabled:
@@ -1149,6 +1149,7 @@ class Cache:
                 cache_row = self.timestamp_to_cache[cache_time][0]
                 self.update_timestamp(cached_key)
                 return cache_row
+        return None
     def __setitem__(self, cached_key, row):
         cache_time = time.time()
         if cached_key in self.cache:
