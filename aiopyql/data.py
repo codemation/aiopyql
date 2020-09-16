@@ -45,10 +45,7 @@ def get_cursor_manager(connect_db, db_type, params={}):
                     finally:
                         pass
             if commit:
-                print("time to commit")
                 await db.commit()
-                print(f"finished commit")
-                return
         return
                             
     return cursor
