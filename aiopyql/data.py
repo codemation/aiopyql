@@ -275,12 +275,14 @@ Mysql
 
         # start queue procesing task
         if not self.queue_processing:
-            asyncio.create_task(self.__process_queue())
+            #asyncio.create_task(self.__process_queue())
+            await self.__process_queue()
 
         while not query_id in self.queue_results:
             await asyncio.sleep(0.005)
             if not self.queue_processing:
-                asyncio.create_task(self.__process_queue())
+                #asyncio.create_task(self.__process_queue())
+                await self.__process_queue()
                 await asyncio.sleep(0.005)
         return self.queue_results.pop(query_id)
             
