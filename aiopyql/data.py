@@ -1,6 +1,6 @@
 from contextlib import contextmanager
-from collections import namedtuple, deque
-import json, re, logging, time
+from collections import namedtuple, deque, Counter
+import json, re, logging, time, uuid
 import asyncio
 
 #Used for grouping columns with database class
@@ -45,7 +45,10 @@ def get_cursor_manager(connect_db, db_type, params={}):
                     finally:
                         pass
             if commit:
+                print("time to commit")
                 await db.commit()
+                print(f"finished commit")
+                return
         return
                             
     return cursor
@@ -140,6 +143,14 @@ Mysql
         self.cache = None
         if self.cache_enabled:
             self.enable_cache(**kw)
+
+        # request queue
+        self.queue = deque()
+        self.queue_results = {"pending": {}, "finished": {}}
+
+        self.queue_processing = False
+
+
     def __str__(self):
         return self.db_name
     def enable_cache(self, **kw):
@@ -212,22 +223,69 @@ Mysql
         for cache in cache_to_clear:
             self.log.debug(f"## db cache deleted - query {cache}")
             del self.cache[cache]
+    async def __process_queue(self, commit=True):
+        if len(self.queue) == 0:
+            return "no items to process"
+        start = time.time()
+        self.conn_refs = Counter({'started': 0, 'finished': 0})
+        conn_querries = []
+        self.queue_processing = True
+        try:
+            async for conn in self.cursor(commit=commit):
+                result_count = 0
+                while len(self.queue) > 0:
+                    query_id, query = self.queue.popleft()
+                    query = f"{';'.join(self.pre_query + [query])}"
+                    query = query.split(';') if ';' in query else [query]
+                    
+                    async def run_query(db, query_id, query, conn):
+                        results = []
+                        try:
+                            for q in query:
+                                db.log.debug(f"{db.db_name} - execute: {q}")
+                                if db.type == 'sqlite':
+                                    async with conn.execute(q) as cursor:
+                                        async for row in cursor:
+                                            results.append(row)
+                                if db.type == 'mysql':
+                                    await conn.execute(q)
+                                    async for row in conn:
+                                        results.append(row)
+                        except Exception as e:
+                            db.log.exception(f"error running query_id {query_id} for query {query}")
+                        db.queue_results[query_id] = results
+                        db.conn_refs['finished']+=1
+                        return query_id
+                    # create task
+                    self.conn_refs['started'] +=1
+                    conn_querries.append(
+                        run_query(self, query_id, query, conn)
+                    )
+
+                results = await asyncio.gather(*conn_querries, return_exceptions=True)
+        except Exception as e:
+            self.log.exception("Exception processing queue")
+        
+        # un-locks processing so new processing tasks can start
+        self.queue_processing = False
+        
+        self.log.debug(f"completed _process_queue in {time.time()- start} seconds")
+        return "completed processing items in queue"
+
     async def execute(self, query, commit=False):
-        results = []
-        query = f"{';'.join(self.pre_query + [query])}"
-        query = query.split(';') if ';' in query else [query]
-        async for conn in self.cursor(commit=commit):
-            for q in query:
-                self.log.debug(f"{self.db_name} - execute: {q}")
-                if self.type == 'sqlite':
-                    async with conn.execute(q) as cursor:
-                        async for row in cursor:
-                            results.append(row)
-                if self.type == 'mysql':
-                    await conn.execute(q)
-                    async for row in conn:
-                        results.append(row)
-        return results
+        query_id = str(uuid.uuid1())
+        self.queue.append((query_id, query))
+
+        # start queue procesing task
+        if not self.queue_processing:
+            asyncio.create_task(self.__process_queue())
+
+        while not query_id in self.queue_results:
+            await asyncio.sleep(0.005)
+            if not self.queue_processing:
+                asyncio.create_task(self.__process_queue())
+                await asyncio.sleep(0.005)
+        return self.queue_results.pop(query_id)
             
     async def run(self, query):
         """
@@ -240,6 +298,7 @@ Mysql
         
         # handle sqlite3.OperationalError: database is locked
         except Exception as e:
+            self.log.exception("database is locked")
             if 'database is locked' in f"{e}":
                 await asyncio.sleep(0.001)
                 return await self.execute(query, commit=True)
@@ -880,7 +939,7 @@ class Table:
         vals = vals + ')'
 
         query = f'INSERT INTO {self.name} {cols} VALUES {vals}'
-        self.log.debug(query)
+        #self.log.debug(query)
         try:
             result = await self.database.run(query)
             if add_to_cache and self.cache_enabled:
