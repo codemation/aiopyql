@@ -31,6 +31,7 @@ def get_cursor_manager(connect_db, db_type, params={}):
     or passes db connection, as well as processes db commit
     for changes
     """
+    print(f"get_cursor_manager: type - {db_type} params - {params}")
     async def cursor(commit=False):
         connect_params = params
         async for db in connect_db(**connect_params):
