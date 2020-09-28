@@ -123,8 +123,10 @@ Mysql
         self.log = kw['logger'] if 'logger' in kw else None
         self.setup_logger(logger=self.log, level=self.debug)
 
-        self.connect_params =  ['user', 'password', 'database', 'db', 'host', 'port']
-        self.connect_config = {}
+        self.connect_params =  ['user', 'password', 'host', 'port']
+
+        db_key = 'db' if not self.type == 'sqlite' else 'database'
+        self.connect_config = {db_key: self.db_name}
         for k,v in kw.items():
             if k in self.connect_params:
                 self.connect_config[k] = v if not k == 'port' else int(v)     
