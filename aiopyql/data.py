@@ -25,13 +25,13 @@ def get_db_manager(db_connect, db_type):
             finally:
                 return
     return connect
-def get_cursor_manager(connect_db, db_type, params={}):
+def get_cursor_manager(db, connect_db, db_type, params={}):
     """
     returns async generator which manages context of cursor
     or passes db connection, as well as processes db commit
     for changes
     """
-    print(f"get_cursor_manager: type - {db_type} params - {params}")
+    db.log.warning(f"get_cursor_manager: type - {db_type} params - {params}")
     async def cursor(commit=False):
         connect_params = params
         async for db in connect_db(**connect_params):
@@ -132,7 +132,11 @@ Mysql
             if k in self.connect_params:
                 self.connect_config[k] = v if not k == 'port' else int(v)     
 
-        self.cursor = get_cursor_manager(self.connect, self.type, params = self.connect_config)
+        self.cursor = get_cursor_manager(self,
+            self.connect, 
+            self.type, 
+            params=self.connect_config
+        )
         if self.type == 'sqlite':
             self.foreign_keys = False
         self.pre_query = [] # SQL commands Ran before each for self.get self.run query 
