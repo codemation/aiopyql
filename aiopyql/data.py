@@ -11,6 +11,25 @@ def get_db_manager(db_connect, db_type):
     returns async generator which manages context
     of the async db connection 
     """
+    if db_type == 'mysql':
+        async def connect(*args, **kwds):
+            pool = await db_connect(*args, **kwds)
+            async with pool.acquire() as conn:
+                try:
+                    yield conn
+                except Exception as e:
+                    try:
+                        logging.debug(f'failed to yeild connection with params {kwds} using {db_connect} result {conn} {repr(e)}')
+                    except Exception:
+                        pass
+                    if conn:
+                        await conn.rollback()
+                finally:
+                    return
+            pool.close()
+            await pool.wait_closed()
+        return connect
+
     async def connect(*args, **kwds):
         async with db_connect(*args, **kwds) as conn:
             try:
@@ -112,7 +131,7 @@ Mysql
             self.connect = get_db_manager(aiosqlite.connect, self.type)
         if self.type == 'mysql':
             import aiomysql
-            self.connect = get_db_manager(aiomysql.connect, self.type)
+            self.connect = get_db_manager(aiomysql.create_pool, self.type)
 
         if not 'database' in kw:
             if not 'db' in kw:
