@@ -282,7 +282,7 @@ Mysql
                 except Exception as e:
                     self.log.exception(f"error running query: {query}")
                     self.queue_results[query_id].append(f"error running query: {query} - {repr(e)}")
-            process_count+=1
+                process_count+=1
         
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
