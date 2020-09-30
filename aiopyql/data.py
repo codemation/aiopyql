@@ -266,7 +266,7 @@ Mysql
                 query_id, query = self.queue.popleft()
                 query = f"{';'.join(self.pre_query + [query])}"
                 query = query.split(';') if ';' in query else [query]
-                self.queue_results[query_id] = []
+                results = []
                 try:
                     for q in query:
                         if self.type == 'mysql':
@@ -274,14 +274,15 @@ Mysql
                             await conn.execute(q)
                             result = await conn.fetchall()                                    
                             for row in result:
-                                self.queue_results[query_id].append(row)
+                                results.append(row)
                         if self.type == 'sqlite':
                             async with conn.execute(q) as cursor:
                                 async for row in cursor:
-                                    self.queue_results[query_id].append(row)
+                                    results.append(row)
                 except Exception as e:
                     self.log.exception(f"error running query: {query}")
-                    self.queue_results[query_id].append(f"error running query: {query} - {repr(e)}")
+                    results = (f"error running query: {query} - {repr(e)}")
+                self.queue_results[query_id] = results
                 process_count+=1
         
         # un-locks processing so new processing tasks can start
