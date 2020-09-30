@@ -27,7 +27,7 @@ def get_db_manager(db_connect, db_type):
                 finally:
                     return
             pool.close()
-            await pool.wait_closed()
+            #await pool.wait_closed()
         return connect
 
     async def connect(*args, **kwds):
@@ -51,6 +51,9 @@ def get_cursor_manager(db, connect_db, db_type, params={}):
     for changes
     """
     db.log.warning(f"get_cursor_manager: type - {db_type} params - {params}")
+    if db.type == 'mysql':
+        if not db.loop == None:
+            params['loop'] = db.loop
     async def cursor(commit=False):
         connect_params = params
         async for db in connect_db(**connect_params):
@@ -170,6 +173,7 @@ Mysql
         # request queue
         self.queue = deque()
         self.queue_results = {"pending": {}, "finished": {}}
+        self.MAX_QUEUE_PROCESS = 5
 
         self.queue_processing = False
 
@@ -252,47 +256,38 @@ Mysql
         start = time.time()
         self.conn_refs = Counter({'started': 0, 'finished': 0})
         conn_querries = []
+        conn_results = []
+        
         self.queue_processing = True
-        try:
-            async for conn in self.cursor(commit=commit):
-                result_count = 0
-                while len(self.queue) > 0:
-                    query_id, query = self.queue.popleft()
-                    query = f"{';'.join(self.pre_query + [query])}"
-                    query = query.split(';') if ';' in query else [query]
-                    
-                    async def run_query(db, query_id, query, conn):
-                        results = []
-                        try:
-                            for q in query:
-                                db.log.debug(f"{db.db_name} - execute: {q}")
-                                if db.type == 'sqlite':
-                                    async with conn.execute(q) as cursor:
-                                        async for row in cursor:
-                                            results.append(row)
-                                if db.type == 'mysql':
-                                    await conn.execute(q)
-                                    async for row in conn:
-                                        results.append(row)
-                        except Exception as e:
-                            db.log.exception(f"error running query_id {query_id} for query {query}")
-                        db.queue_results[query_id] = results
-                        db.conn_refs['finished']+=1
-                        return query_id
-                    # create task
-                    self.conn_refs['started'] +=1
-                    conn_querries.append(
-                        run_query(self, query_id, query, conn)
-                    )
-
-                results = await asyncio.gather(*conn_querries, return_exceptions=True)
-        except Exception as e:
-            self.log.exception("Exception processing queue")
+        
+        process_count = 0
+        async for conn in self.cursor(commit=commit):
+            while len(self.queue) > 0 and process_count < self.MAX_QUEUE_PROCESS:
+                query_id, query = self.queue.popleft()
+                query = f"{';'.join(self.pre_query + [query])}"
+                query = query.split(';') if ';' in query else [query]
+                self.queue_results[query_id] = []
+                try:
+                    for q in query:
+                        if self.type == 'mysql':
+                            self.log.debug(f"{self.db_name} - execute: {q}")
+                            await conn.execute(q)
+                            result = await conn.fetchall()                                    
+                            for row in result:
+                                self.queue_results[query_id].append(row)
+                        if self.type == 'sqlite':
+                            async with conn.execute(q) as cursor:
+                                async for row in cursor:
+                                    self.queue_results[query_id].append(row)
+                except Exception as e:
+                    self.log.exception(f"error running query: {query}")
+                    self.queue_results[query_id].append(f"error running query: {query} - {repr(e)}")
+            process_count+=1
         
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
         
-        self.log.debug(f"completed _process_queue in {time.time()- start} seconds")
+        self.log.debug(f"completed _process_queue of {process_count} items in {time.time()- start} seconds - {self.queue}")
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
