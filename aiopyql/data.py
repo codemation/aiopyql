@@ -64,13 +64,10 @@ def get_cursor_manager(db, connect_db, db_type, params={}):
                     try:
                         yield c
                     except Exception as e:
-                        print(f"error yielding cursor {repr(e)}")
-                    finally:
-                        pass
+                        db.log.exception(f"error yielding cursor {repr(e)}")
             if commit:
                 await db.commit()
-        return
-                            
+        return                
     return cursor
 def flatten(s):
     return re.sub('\n',' ', s)
@@ -281,7 +278,7 @@ Mysql
                                     results.append(row)
                 except Exception as e:
                     self.log.exception(f"error running query: {query}")
-                    results = (f"error running query: {query} - {repr(e)}")
+                    results = e
                 self.queue_results[query_id] = results
                 process_count+=1
         
@@ -306,7 +303,10 @@ Mysql
                 #asyncio.create_task(self.__process_queue())
                 await self.__process_queue()
                 await asyncio.sleep(0.005)
-        return self.queue_results.pop(query_id)
+        result = self.queue_results.pop(query_id)
+        if isinstance(result, Exception):
+            raise result
+        return result
             
     async def run(self, query):
         """
@@ -314,17 +314,7 @@ Mysql
         """
         if self.cache_enabled:
             self.cache_check(query)
-        try:
-            return await self.execute(query, commit=True)
-        
-        # handle sqlite3.OperationalError: database is locked
-        except Exception as e:
-            self.log.exception("database is locked")
-            if 'database is locked' in f"{e}":
-                await asyncio.sleep(0.001)
-                return await self.execute(query, commit=True)
-            # handle rest of exceptions up-stream
-            raise e
+        return await self.execute(query, commit=True)
 
     async def get(self, query, commit=False):
         """
@@ -572,12 +562,7 @@ class Table:
         schema = f"CREATE TABLE {self.name} {cols}{comma}{constraints})"
         return schema
     async def create_schema(self):
-        try:
-            return await self.database.run(self.get_schema())
-        except Exception as e:
-            return self.database.log.exception(
-                f"Exception encountered creating schema"
-                )
+        return await self.database.run(self.get_schema())
     def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
@@ -589,143 +574,142 @@ class Table:
                 if kw['join'] in self.database.tables:
                     tables.append(self.database.tables[kw['join']])
         return tables
+    def _validate_where_input(self, tables, where):
+        for table in tables:
+            for col_name, col in table.columns.items():
+                if not col_name in where:
+                    continue
+                if not col.type == bool:
+                    #JSON handling
+                    if col.type == str and type(where[col_name]) == dict:
+                        where[col_name] = f"'{col.type(json.dumps(where[col_name]))}'"
+                        continue
+                    where[col_name] = col.type(where[col_name]) if not where[col_name] in [None, 'NULL'] else 'NULL'
+                    continue
+                # Bool column Type
+                try:
+                    where[col_name] = col.type(int(where[col_name])) if table.database.type == 'mysql' else int(col.type(int(where[col_name])))
+                except Exception as e:
+                    #Bool Input is string
+                    if 'true' in where[col_name].lower():
+                        where[col_name] = True if table.database.type == 'mysql' else 1
+                    elif 'false' in where[col_name].lower():
+                        where[col_name] = False if table.database.type == 'mysql' else 0
+                    else:
+                        self.log.warning(f"Unsupported value {where[col_name]} provide for column type {col.type}")
+                        del(where[col_name])
+                        continue
+        return where
     def _process_input(self, kw):
         tables = self.get_tables_from_input(kw)
-        def verify_input(where):
-            for table in tables:
-                for col_name, col in table.columns.items():
-                    if col_name in where:
-                        if not col.type == bool:
-                            #JSON handling
-                            if col.type == str and type(where[col_name]) == dict:
-                                where[col_name] = f"'{col.type(json.dumps(where[col_name]))}'"
-                                continue
-                            where[col_name] = col.type(where[col_name]) if not where[col_name] in [None, 'NULL'] else 'NULL'
-                        else:
-                            try:
-                                where[col_name] = col.type(int(where[col_name])) if table.database.type == 'mysql' else int(col.type(int(where[col_name])))
-                            except:
-                                #Bool Input is string
-                                if 'true' in where[col_name].lower():
-                                    where[col_name] = True if table.database.type == 'mysql' else 1
-                                elif 'false' in where[col_name].lower():
-                                    where[col_name] = False if table.database.type == 'mysql' else 0
-                                else:
-                                    self.log.warning(f"Unsupported value {where[col_name]} provide for column type {col.type}")
-                                    del(where[col_name])
-                                    continue
-            return where
-        kw = verify_input(kw)
+        kw = self._validate_where_input(tables, kw)
         if 'where' in kw:
-            kw['where'] = verify_input(kw['where'])
+            kw['where'] = self._validate_where_input(tables, kw['where'])
         return kw
-
+    def _validate_table_column(self, col_name, no_raise=False):
+        dot_table = False
+        if isinstance(col_name, str) and '.' in col_name:
+            dot_table = True
+            table, column = col_name.split('.')
+        else:
+            table, column = self.name, col_name
+        if ( not column in self.database.tables[table].columns and
+            not (no_raise and not dot_table) ):
+            raise InvalidInputError(
+                f"{column} is not a valid column in table {table}", 
+                "invalid column specified for 'where'")
+        return table, column
     def __where(self, kw):
         where_sel = ''
         kw = self._process_input(kw)
-        if 'where' in kw:
-            and_value = 'WHERE '
+        if not 'where' in kw:
+            return where_sel
+        and_value = 'WHERE '
 
-            def get_valid_table_column(col_name, **kw):
-                dot_table = False
-                if isinstance(col_name, str) and '.' in col_name:
-                    dot_table = True
-                    table, column = col_name.split('.')
-                else:
-                    table, column = self.name, col_name
-                if not column in self.database.tables[table].columns:
-                    if 'no_raise' in kw and not dot_table:
-                        pass
-                    else:
-                        raise InvalidInputError(
-                            f"{column} is not a valid column in table {table}", 
-                            "invalid column specified for 'where'")
-                return table, column
-
-            supported_operators = {'=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'}
-            if isinstance(kw['where'], list):
-                for condition in kw['where']:
-                    if not type(condition) in [dict, list]:
-                        raise InvalidInputError(
-                            f"{condition} is not a valid type within where=[]", 
-                            "invalid subcondition type within where=[], expected type(list, dict)"
-                            )
-                    if isinstance(condition, list):
-                        if not len(condition) == 3:
-                            cond_len = len(condition)
-                            raise InvalidInputError(
-                                f"{condition} has {cond_len} items, expected 3", 
-                                f"{condition} has {cond_len} items, expected 3"
+        supported_operators = {'=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'}
+        if isinstance(kw['where'], list):
+            for condition in kw['where']:
+                if not type(condition) in [dict, list]:
+                    raise InvalidInputError(
+                        f"{condition} is not a valid type within where=[]", 
+                        "invalid subcondition type within where=[], expected type(list, dict)"
                         )
-                        condition1 = f"{condition[0]}"
-                        operator = condition[1]
-                        condition2 = condition[2]
+                if isinstance(condition, list):
+                    if not len(condition) == 3:
+                        cond_len = len(condition)
+                        raise InvalidInputError(
+                            f"{condition} has {cond_len} items, expected 3", 
+                            f"{condition} has {cond_len} items, expected 3"
+                    )
+                    condition1 = f"{condition[0]}"
+                    operator = condition[1]
+                    condition2 = condition[2]
 
-                        table, column = None, None
-                        # expecting comparison operators
-                        if not operator in supported_operators:
-                            raise InvalidInputError(
-                                f"Invalid operator {operator} within {condition}", f"supported operators [{supported_operators}]"
-                            )
-                        for i, value in enumerate([condition1, condition2]):
-                            if i == 0:
-                                table, column = get_valid_table_column(value)
-                                pass
-                            if i == 1 and 'in' in operator:
-                                # in operators should be proceeded by a list of values
-                                if not isinstance(condition2, list):
-                                    raise InvalidInputError(
-                                        f"Invalid use of operator '{operator}' within {condition}", 
-                                        f"'in' should be proceeded by ['list', 'of', 'values'] not {type(condition2)} - {condition2}"
-                                    )
-                                if self.database.tables[table].columns[column].type == str:
-                                    condition2 = [f"'{cond}'" for cond in condition2]
-                                else:
-                                    condition2 = [str(cond) for cond in condition2]
-                                condition2 = ', '.join(condition2)
-                                condition2 = f"({condition2})"
-                                break
-                            if i == 1:
-                                get_valid_table_column(value, no_raise=True)
-                                """still raises if dot_table used & not in table """
-                                pass
-
-                        if 'like' in operator:
-                            condition2 = f"{condition2}"
-                            if not '*' in condition2:
-                                condition2 = f"'%{condition2}%'"
+                    table, column = None, None
+                    # expecting comparison operators
+                    if not operator in supported_operators:
+                        raise InvalidInputError(
+                            f"Invalid operator {operator} within {condition}", f"supported operators [{supported_operators}]"
+                        )
+                    for i, value in enumerate([condition1, condition2]):
+                        if i == 0:
+                            table, column = self._validate_table_column(value)
+                            pass
+                        if i == 1 and 'in' in operator:
+                            # in operators should be proceeded by a list of values
+                            if not isinstance(condition2, list):
+                                raise InvalidInputError(
+                                    f"Invalid use of operator '{operator}' within {condition}", 
+                                    f"'in' should be proceeded by ['list', 'of', 'values'] not {type(condition2)} - {condition2}"
+                                )
+                            if self.database.tables[table].columns[column].type == str:
+                                condition2 = [f"'{cond}'" for cond in condition2]
                             else:
-                                condition2 = '%'.join(condition2.split('*'))
-                                condition2 = f"'{condition2}'"
+                                condition2 = [str(cond) for cond in condition2]
+                            condition2 = ', '.join(condition2)
+                            condition2 = f"({condition2})"
+                            break
+                        if i == 1:
+                            self._validate_table_column(value, no_raise=True)
+                            """still raises if dot_table used & not in table """
+                            pass
 
-                        
-                        where_sel = f"{where_sel}{and_value}{condition1} {operator} {condition2}"
-                    if isinstance(condition, dict):
-                        for col_name, v in condition.items():
-                            table, column = get_valid_table_column(col_name)
-                            table = self.database.tables[table]
-                            eq = '=' if not v == 'NULL' else ' IS '
-                            #json check
-                            if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
-                                where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
-                            else:
-                                val = v if table.columns[column].type is not str else f"'{v}'"
-                                where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
+                    if 'like' in operator:
+                        condition2 = f"{condition2}"
+                        if not '*' in condition2:
+                            condition2 = f"'%{condition2}%'"
+                        else:
+                            condition2 = '%'.join(condition2.split('*'))
+                            condition2 = f"'{condition2}'"
 
-                    and_value = ' AND '
-                        
-            if isinstance(kw['where'], dict):
-                for col_name, v in kw['where'].items():
-                    table, column = get_valid_table_column(col_name)
-                    table = self.database.tables[table]
-                    eq = '=' if not v == 'NULL' else ' IS '
-                    #json check
-                    if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
-                        where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
-                    else:
-                        val = v if table.columns[column].type is not str else f"'{v}'"
-                        where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
-                    and_value = ' AND '
+                    
+                    where_sel = f"{where_sel}{and_value}{condition1} {operator} {condition2}"
+                if isinstance(condition, dict):
+                    for col_name, v in condition.items():
+                        table, column = self._validate_table_column(col_name)
+                        table = self.database.tables[table]
+                        eq = '=' if not v == 'NULL' else ' IS '
+                        #json check
+                        if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
+                            where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
+                        else:
+                            val = v if table.columns[column].type is not str else f"'{v}'"
+                            where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
+
+                and_value = ' AND '
+                    
+        if isinstance(kw['where'], dict):
+            for col_name, v in kw['where'].items():
+                table, column = self._validate_table_column(col_name)
+                table = self.database.tables[table]
+                eq = '=' if not v == 'NULL' else ' IS '
+                #json check
+                if v == 'NULL' or table.columns[column].type == str and '{"' and '}' in v:
+                    where_sel = f"{where_sel}{and_value}{col_name}{eq}{v}"
+                else:
+                    val = v if table.columns[column].type is not str else f"'{v}'"
+                    where_sel = f"{where_sel}{and_value}{col_name}{eq}{val}"
+                and_value = ' AND '
         return where_sel
     def _join(self, kw):
         join = ''
