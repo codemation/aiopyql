@@ -285,7 +285,9 @@ Mysql
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
         
-        self.log.debug(f"completed _process_queue of {process_count} items in {time.time()- start} seconds - {self.queue}")
+        self.log.debug(
+            f"completed _process_queue of {process_count} items in {time.time()- start} seconds - {len(self.queue)} queued"
+            )
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
@@ -528,7 +530,7 @@ class Table:
             self.max_cache_len = 125 if not 'max_cache_len' in kw else kw['max_cache_len']
             self.cache = Cache(self)
         else:
-            self.log.warning("enable_cache called while cache exists, first disable & then enable")
+            self.log.error("enable_cache called while cache exists, first disable & then enable")
     def disable_cache(self, **kw):
         if not self.cache == None:
             self.cache = None
@@ -596,7 +598,7 @@ class Table:
                     elif 'false' in where[col_name].lower():
                         where[col_name] = False if table.database.type == 'mysql' else 0
                     else:
-                        self.log.warning(f"Unsupported value {where[col_name]} provide for column type {col.type}")
+                        self.log.error(f"Unsupported value {where[col_name]} provide for column type {col.type}")
                         del(where[col_name])
                         continue
         return where
@@ -1192,7 +1194,7 @@ class Cache:
                     if cache_key in self.cache and not self.cache[cache_key] == cache_time:
                         continue
                     del self.cache[cache_key]
-                    self.log.warning(f"# {self.parent} cach_key '{cache_key}' cleared due to cache length of {self.max_len} exceeded")
+                    self.log.debug(f"# {self.parent} cach_key '{cache_key}' cleared due to cache length of {self.max_len} exceeded")
     def update_timestamp(self, cached_key):
         if cached_key in self:
             old_time = self.cache[cached_key]
