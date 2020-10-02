@@ -170,7 +170,7 @@ Mysql
         # request queue
         self.queue = deque()
         self.queue_results = {"pending": {}, "finished": {}}
-        self.MAX_QUEUE_PROCESS = 5
+        self.MAX_QUEUE_PROCESS = 20
 
         self.queue_processing = False
 
@@ -252,8 +252,8 @@ Mysql
             return "no items to process"
         start = time.time()
         self.conn_refs = Counter({'started': 0, 'finished': 0})
-        conn_querries = []
-        conn_results = []
+
+        query_perf = {}
         
         self.queue_processing = True
         
@@ -261,8 +261,12 @@ Mysql
         async for conn in self.cursor(commit=commit):
             while len(self.queue) > 0 and process_count < self.MAX_QUEUE_PROCESS:
                 query_id, query = self.queue.popleft()
+                query_perf[query_id] = {'query': query}
+                query_start = time.time()
+
                 query = f"{';'.join(self.pre_query + [query])}"
                 query = query.split(';') if ';' in query else [query]
+                 
                 results = []
                 try:
                     for q in query:
@@ -280,14 +284,15 @@ Mysql
                     self.log.exception(f"error running query: {query}")
                     results = e
                 self.queue_results[query_id] = results
+                query_perf[query_id]['time'] = time.time() - query_start 
                 process_count+=1
         
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
         
         self.log.debug(
-            f"completed _process_queue of {process_count} items in {time.time()- start} seconds - {len(self.queue)} queued"
-            )
+            f"{self.db_name} completed _process_queue of {process_count} items in {time.time()- start} seconds - {len(self.queue)} queued - query_perf {query_perf}"
+        )
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
