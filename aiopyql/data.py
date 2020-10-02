@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from collections import namedtuple, deque, Counter
 import json, re, logging, time, uuid
-import asyncio
+import asyncio, atexit
 
 #Used for grouping columns with database class
 TableColumn = namedtuple('col', ['name', 'type', 'mods'])
@@ -14,20 +14,13 @@ def get_db_manager(db_connect, db_type):
     if db_type == 'mysql':
         async def connect(*args, **kwds):
             pool = await db_connect(*args, **kwds)
-            async with pool.acquire() as conn:
-                try:
+            try:
+                async with pool.acquire() as conn:
                     yield conn
-                except Exception as e:
-                    try:
-                        logging.debug(f'failed to yeild connection with params {kwds} using {db_connect} result {conn} {repr(e)}')
-                    except Exception:
-                        pass
-                    if conn:
-                        await conn.rollback()
-                finally:
-                    return
+            except Exception as e:
+                pass
             pool.close()
-            #await pool.wait_closed()
+            await pool.wait_closed()
         return connect
 
     async def connect(*args, **kwds):
@@ -42,8 +35,55 @@ def get_db_manager(db_connect, db_type):
                 if conn:
                     await conn.rollback()
             finally:
-                return
+                pass
     return connect
+def get_cursor_manager_test(db, connect_db, db_type, params={}):
+    """
+    returns async generator which manages context of cursor
+    or passes db connection, as well as processes db commit
+    for changes
+    """
+    db.log.warning(f"get_cursor_manager: type - {db_type} params - {params}")
+    if db.type == 'mysql':
+        if not db.loop == None:
+            params['loop'] = db.loop
+    async def get_cursor(commit=False):
+        async def keep_alive(cursor, timeout=15):
+            last_update = time.time()
+            try:
+                while True:
+                    duration = time.time() - db.last_cursor_time
+                    if duration > timeout:
+                        await cursor.asend('finished')
+                    db.log.warning(f"keep_alive - duration {duration}")
+                    await asyncio.sleep(5)
+            except Exception as e:
+                db.log.exception("keep alive exception")
+            finally:
+                await cursor.asend('finished')
+            
+
+        async def open_cursor():
+            connect_params = params
+            async for db in connect_db(**connect_params):
+                status = 'started'
+                while not status == 'finished':
+                    if db_type == 'sqlite':
+                        status = yield db
+                    if db_type == 'mysql':
+                        async with db.cursor() as c:
+                            status = yield (c, db)
+                if commit:
+                    await db.commit()
+        if not 'open_cursor' in db.__dict__:
+            db.open_cursor = open_cursor()
+            await db.open_cursor.asend(None)
+            asyncio.create_task(keep_alive(db.open_cursor))
+
+        db.last_cursor_time = time.time()
+        yield await db.open_cursor.asend(None)
+    return get_cursor
+
 def get_cursor_manager(db, connect_db, db_type, params={}):
     """
     returns async generator which manages context of cursor
@@ -62,11 +102,11 @@ def get_cursor_manager(db, connect_db, db_type, params={}):
             if db_type == 'mysql':
                 async with db.cursor() as c:
                     try:
-                        yield c
+                        yield (c, db)
                     except Exception as e:
                         db.log.exception(f"error yielding cursor {repr(e)}")
             if commit:
-                await db.commit()
+                await db.commit() 
         return                
     return cursor
 def flatten(s):
@@ -173,8 +213,6 @@ Mysql
         self.MAX_QUEUE_PROCESS = 20
 
         self.queue_processing = False
-
-
     def __str__(self):
         return self.db_name
     def enable_cache(self, **kw):
@@ -259,9 +297,10 @@ Mysql
         
         process_count = 0
         async for conn in self.cursor(commit=commit):
-            while len(self.queue) > 0 and process_count < self.MAX_QUEUE_PROCESS:
+            while len(self.queue) > 0: # and process_count < self.MAX_QUEUE_PROCESS:
                 query_id, query = self.queue.popleft()
                 query_perf[query_id] = {'query': query}
+                query_commit = False if 'SELECT' in query else True
                 query_start = time.time()
 
                 query = f"{';'.join(self.pre_query + [query])}"
@@ -272,14 +311,18 @@ Mysql
                     for q in query:
                         if self.type == 'mysql':
                             self.log.debug(f"{self.db_name} - execute: {q}")
-                            await conn.execute(q)
-                            result = await conn.fetchall()                                    
+                            await conn[0].execute(q)
+                            result = await conn[0].fetchall()                                    
                             for row in result:
                                 results.append(row)
+                            if query_commit:
+                                await conn[1].commit()
                         if self.type == 'sqlite':
                             async with conn.execute(q) as cursor:
                                 async for row in cursor:
                                     results.append(row)
+                            if query_commit:
+                                await conn.commit()
                 except Exception as e:
                     self.log.exception(f"error running query: {query}")
                     results = e
