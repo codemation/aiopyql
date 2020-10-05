@@ -425,7 +425,10 @@ Mysql
         """
         if self.cache_enabled:
             self.cache_check(query)
-        return await self.execute(query, commit=True)
+        result = await self.execute(query, commit=True)
+        if self.cache_enabled:
+            self.cache_check(query)
+        return result
 
     async def get(self, query, commit=False):
         """
