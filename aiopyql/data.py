@@ -210,7 +210,7 @@ Mysql
         # request queue
         self.queue = deque()
         self.queue_results = {"pending": {}, "finished": {}}
-        self.MAX_QUEUE_PROCESS = 20
+        self.MAX_QUEUE_PROCESS = 100
 
         self.queue_processing = False
     def __str__(self):
