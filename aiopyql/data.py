@@ -297,10 +297,15 @@ Mysql
         
         process_count = 0
         async for conn in self.cursor(commit=commit):
-            while len(self.queue) > 0: # and process_count < self.MAX_QUEUE_PROCESS:
+            while len(self.queue) > 0 and process_count < self.MAX_QUEUE_PROCESS:
+                
                 query_id, query = self.queue.popleft()
                 query_perf[query_id] = {'query': query}
-                query_commit = False if 'SELECT' in query else True
+                query_commit = not (
+                    'SELECT' in query
+                    or 'select' in query
+                    or 'show ' in query
+                    )
                 query_start = time.time()
 
                 query = f"{';'.join(self.pre_query + [query])}"
@@ -312,20 +317,21 @@ Mysql
                         if self.type == 'mysql':
                             self.log.debug(f"{self.db_name} - execute: {q}")
                             await conn[0].execute(q)
-                            result = await conn[0].fetchall()                                    
-                            for row in result:
-                                results.append(row)
-                            if query_commit:
-                                await conn[1].commit()
+                            if not query_commit:
+                                result = await conn[0].fetchall()          
+                                for row in result:
+                                    results.append(row)
+                            
                         if self.type == 'sqlite':
                             async with conn.execute(q) as cursor:
-                                async for row in cursor:
-                                    results.append(row)
-                            if query_commit:
-                                await conn.commit()
+                                if not query_commit:
+                                    async for row in cursor:
+                                        results.append(row)
                 except Exception as e:
                     self.log.exception(f"error running query: {query}")
                     results = e
+                if query_commit:
+                    _ = await conn[1].commit() if self.type == 'mysql' else await conn.commit()
                 self.queue_results[query_id] = results
                 query_perf[query_id]['time'] = time.time() - query_start 
                 process_count+=1
@@ -345,6 +351,7 @@ Mysql
         # start queue procesing task
         if not self.queue_processing:
             #asyncio.create_task(self.__process_queue())
+            #await asyncio.sleep(0.005)
             await self.__process_queue()
 
         while not query_id in self.queue_results:
@@ -352,7 +359,7 @@ Mysql
             if not self.queue_processing:
                 #asyncio.create_task(self.__process_queue())
                 await self.__process_queue()
-                await asyncio.sleep(0.005)
+                #await asyncio.sleep(0.005)
         result = self.queue_results.pop(query_id)
         if isinstance(result, Exception):
             raise result
@@ -527,6 +534,7 @@ Mysql
         self.tables[name] = Table(name, self, cols, prim_key, **kw)
         if not 'existing' in kw:
             await self.tables[name].create_schema()
+        self.log.debug(f"table {name} created")
         return f"table {name} created"
 
 
