@@ -285,30 +285,28 @@ Mysql
         for cache in cache_to_clear:
             self.log.debug(f"## db cache deleted - query {cache}")
             del self.cache[cache]
+    async def __commit_querries_run_query(self, query):
+        try:
+            query_id, q, q_coro = query 
+            self.log.debug(f"{self.db_name} - execute: {q}")
+            await q_coro
+            self.queue_results[query_id] = []
+        except Exception as e:
+            self.log.exception(f"error running query: {query}")
+            results = e
+            self.queue_results[query_id] = results
     async def __commit_querries(self, connection, querries):
         self.log.debug(f"__commit_querries started for {querries}")
         start = time.time()
         run_querries = []
         for query in querries:
-            print(f"running query: {query}")
-            async def run_query(query):
-                try:
-                    query_id, q, q_coro = query 
-                    self.log.debug(f"{self.db_name} - execute: {query[1]}")
-                    await query[2]
-                    self.queue_results[query_id] = []
-                except Exception as e:
-                    self.log.exception(f"error running query: {query}")
-                    results = e
-                    self.queue_results[query_id] = results
-
-            if self.type == 'mysql':
-                await run_query(query)
-            else:
-                run_querries.append(
-                    run_query(query)
-                )
-        if len(run_querries) > 0:
+            run_querries.append(
+                self.__commit_querries_run_query(query)
+            )
+        if self.type == 'mysql':
+            for run_q in run_querries:
+                await run_q
+        else:
             await asyncio.gather(*run_querries, return_exceptions=True)
         await connection.commit()
         self.log.debug(f"__commit_querries of {len(querries)} completed in {time.time() - start} seconds")
