@@ -208,8 +208,7 @@ Mysql
             self.enable_cache(**kw)
 
         # request queue
-        self.queue = deque()
-        self.queue = asyncio.Queue()
+        self._query_queue = asyncio.Queue()
         self.queue_process_task = None
         self.queue_results = {"pending": {}, "finished": {}}
         self.MAX_QUEUE_PROCESS = 100
@@ -329,10 +328,10 @@ Mysql
                 while True:
                     try:
                         if queue_empty:
-                            query_id, query = await self.queue.get()
+                            query_id, query = await self._query_queue.get()
                             queue_empty = False
                         else:
-                            query_id, query = self.queue.get_nowait()
+                            query_id, query = self._query_queue.get_nowait()
                         query_commit = not (
                             'SELECT' in query
                             or 'select' in query
@@ -369,7 +368,6 @@ Mysql
                                 if not query_commit:
                                     self.log.debug(f"{self.db_name} - execute: {q}")
                                     await conn[0].execute(q)
-                                    #results = []
                                     result = await conn[0].fetchall()          
                                     for row in result:
                                         results.append(row)
@@ -380,7 +378,6 @@ Mysql
                                 
                             if self.type == 'sqlite':
                                 if not query_commit:
-                                    #results = []
                                     async with conn.execute(q) as cursor:
                                         async for row in cursor:
                                             results.append(row)
