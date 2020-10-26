@@ -400,7 +400,7 @@ Mysql
 
     async def execute(self, query, commit=False):
         query_id = str(uuid.uuid1())
-        await self.queue.put((query_id, query))
+        await self._query_queue.put((query_id, query))
 
         # start queue procesing task
         if not self.queue_processing:
