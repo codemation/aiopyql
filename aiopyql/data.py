@@ -163,7 +163,7 @@ Mysql
         return db
     def __init__(self, **kw):
         #self.loop = asyncio.new_event_loop()
-        self.loop = None if not 'loop' in kw else kw['loop']
+        self.loop = asyncio.get_running_loop() if not 'loop' in kw else kw['loop']
         #self.loop = kw['loop'] if 'loop' in kw else asyncio.new_event_loop()
         self.type = 'sqlite' if not 'type' in kw else kw['type']
         if self.type == 'sqlite':
@@ -404,13 +404,13 @@ Mysql
 
         # start queue procesing task
         if not self.queue_processing:
-            self.queue_process_task = asyncio.create_task(self.__process_queue())
+            self.queue_process_task = self.loop.create_task(self.__process_queue())
             await asyncio.sleep(0.005)
 
         while not query_id in self.queue_results:
             await asyncio.sleep(0.005)
             if not self.queue_processing:
-                self.queue_process_task = asyncio.create_task(self.__process_queue())
+                self.queue_process_task = self.loop.create_task(self.__process_queue())
         result = self.queue_results.pop(query_id)
         if isinstance(result, Exception):
             raise result
