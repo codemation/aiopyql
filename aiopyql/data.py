@@ -209,6 +209,8 @@ Mysql
 
         # request queue
         self.queue = deque()
+        self.queue = asyncio.Queue()
+        self.queue_process_task = None
         self.queue_results = {"pending": {}, "finished": {}}
         self.MAX_QUEUE_PROCESS = 100
 
@@ -286,6 +288,11 @@ Mysql
             self.log.debug(f"## db cache deleted - query {cache}")
             del self.cache[cache]
     async def __commit_querries_run_query(self, query):
+        """
+        a coro which unpacks query id, query, and pending coroutine, 
+        executes and marks query complete by updating 
+        self.queue_results[query_id]
+        """
         try:
             query_id, q, q_coro = query 
             self.log.debug(f"{self.db_name} - execute: {q}")
@@ -295,6 +302,7 @@ Mysql
             self.log.exception(f"error running query: {query}")
             results = e
             self.queue_results[query_id] = results
+
     async def __commit_querries(self, connection, querries):
         self.log.debug(f"__commit_querries started for {querries}")
         start = time.time()
@@ -312,106 +320,100 @@ Mysql
         self.log.debug(f"__commit_querries of {len(querries)} completed in {time.time() - start} seconds")
 
     async def __process_queue(self, commit=True):
-        if len(self.queue) == 0:
-            return "no items to process"
-        start = time.time()
-        self.conn_refs = Counter({'started': 0, 'finished': 0})
-
-        query_perf = {}
-        
         self.queue_processing = True
-        
-        process_count = 0
-        async for conn in self.cursor(commit=commit):
-            querries_to_commit = []
-            while len(self.queue) > 0 and process_count < self.MAX_QUEUE_PROCESS:
-                
-                query_id, query = self.queue.popleft()
-                query_perf[query_id] = {'query': query}
-                query_commit = not (
-                    'SELECT' in query
-                    or 'select' in query
-                    or 'show ' in query
-                    )
+        try:
+            async for conn in self.cursor(commit=commit):
+                querries_to_commit = []
+                last_commit = time.time()
+                queue_empty = True
+                while True:
+                    try:
+                        if queue_empty:
+                            query_id, query = await self.queue.get()
+                            queue_empty = False
+                        else:
+                            query_id, query = self.queue.get_nowait()
+                        query_commit = not (
+                            'SELECT' in query
+                            or 'select' in query
+                            or 'show ' in query
+                            )
 
-                query_start = time.time()
-                query = f"{';'.join(self.pre_query + [query])}"
-                query = query.split(';') if ';' in query else [query]
+                        query_start = time.time()
+                        query = f"{';'.join(self.pre_query + [query])}"
+                        query = query.split(';') if ';' in query else [query]
+                    except asyncio.queues.QueueEmpty:
+                        if len(querries_to_commit) > 0:
+                            self.log.debug(f"queue empty, commiting: {querries_to_commit}")
+                            await self.__commit_querries(
+                                conn[1] if self.type == 'mysql' else conn,
+                                querries_to_commit
+                            )
+                            querries_to_commit = []
+                        last_commit = time.time()
+                        queue_empty = True
+                        continue
 
-                if not query_commit:
-                    if len(querries_to_commit) > 0:
-                        await self.__commit_querries(
-                            conn[1] if self.type == 'mysql' else conn,
-                            querries_to_commit
-                        )
-                        querries_to_commit = []
-                results = []
-                try:
-                    for q in query:
-                        if self.type == 'mysql':
-                            if not query_commit:
-                                self.log.debug(f"{self.db_name} - execute: {q}")
-                                await conn[0].execute(q)
-                                #results = []
-                                result = await conn[0].fetchall()          
-                                for row in result:
-                                    results.append(row)
-                            else:
-                                querries_to_commit.append(
-                                    (query_id, q, conn[0].execute(q))
-                                )
-                            
-                        if self.type == 'sqlite':
-                            if not query_commit:
-                                #results = []
-                                async with conn.execute(q) as cursor:
-                                    async for row in cursor:
+                    if not query_commit or time.time() - last_commit > 0.05:
+                        if len(querries_to_commit) > 0:
+                            await self.__commit_querries(
+                                conn[1] if self.type == 'mysql' else conn,
+                                querries_to_commit
+                            )
+                            querries_to_commit = []
+                        last_commit = time.time()
+                    results = []
+                    try:
+                        for q in query:
+                            if self.type == 'mysql':
+                                if not query_commit:
+                                    self.log.debug(f"{self.db_name} - execute: {q}")
+                                    await conn[0].execute(q)
+                                    #results = []
+                                    result = await conn[0].fetchall()          
+                                    for row in result:
                                         results.append(row)
-                            else:
-                                querries_to_commit.append(
-                                    (query_id, q, conn.execute(q))
-                                )
+                                else:
+                                    querries_to_commit.append(
+                                        (query_id, q, conn[0].execute(q))
+                                    )
+                                
+                            if self.type == 'sqlite':
+                                if not query_commit:
+                                    #results = []
+                                    async with conn.execute(q) as cursor:
+                                        async for row in cursor:
+                                            results.append(row)
+                                else:
+                                    querries_to_commit.append(
+                                        (query_id, q, conn.execute(q))
+                                    )
+                    except Exception as e:
+                        self.log.exception(f"error running query: {query}")
+                        results = e
+                    if not query_commit:
+                        self.queue_results[query_id] = results                                    
+        except Exception as e:
+            self.log.exception(f"error during __process_queue")
 
-                except Exception as e:
-                    self.log.exception(f"error running query: {query}")
-                    results = e
-                if not query_commit:
-                    self.queue_results[query_id] = results
-                    #_ = await conn[1].commit() if self.type == 'mysql' else await conn.commit()
-                
-                query_perf[query_id]['time'] = time.time() - query_start 
-                process_count+=1
-            # commit querries_to_commit
-            if len(querries_to_commit) > 0:
-                await self.__commit_querries(
-                    conn[1] if self.type == 'mysql' else conn,
-                    querries_to_commit
-                )
-        
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
-        
-        self.log.debug(
-            f"{self.db_name} completed _process_queue of {process_count} items in {time.time()- start} seconds - {len(self.queue)} queued - query_perf {query_perf}"
-        )
+
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
         query_id = str(uuid.uuid1())
-        self.queue.append((query_id, query))
+        await self.queue.put((query_id, query))
 
         # start queue procesing task
         if not self.queue_processing:
-            #asyncio.create_task(self.__process_queue())
-            #await asyncio.sleep(0.005)
-            await self.__process_queue()
+            self.queue_process_task = asyncio.create_task(self.__process_queue())
+            await asyncio.sleep(0.005)
 
         while not query_id in self.queue_results:
             await asyncio.sleep(0.005)
             if not self.queue_processing:
-                #asyncio.create_task(self.__process_queue())
-                await self.__process_queue()
-                #await asyncio.sleep(0.005)
+                self.queue_process_task = asyncio.create_task(self.__process_queue())
         result = self.queue_results.pop(query_id)
         if isinstance(result, Exception):
             raise result
