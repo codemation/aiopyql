@@ -17,8 +17,7 @@ class TestData(unittest.TestCase):
 
         db = data.Database.create(
             **config,
-            cache_enabled=True, 
-            loop=asyncio.get_event_loop()
+            cache_enabled=True,
         )
         
         # Start tests
@@ -29,11 +28,10 @@ class TestData(unittest.TestCase):
         db = data.Database.create(
                 database="testdb",
                 cache_enabled=True,
-                loop=asyncio.get_event_loop(),
-                debug=True
+                #debug=True
             )
         asyncio.run(async_test(db))
-        
+
 async def async_test(db):
     db = await db
     import random
