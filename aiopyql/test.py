@@ -6,101 +6,34 @@ class TestData(unittest.TestCase):
         os.environ['DB_USER'] = 'josh'
         os.environ['DB_PASSWORD'] = 'abcd1234'
         os.environ['DB_HOST'] = 'localhost' if not 'DB_HOST' in os.environ else os.environ['DB_HOST']
-        os.environ['DB_PORT'] = '3306'
+        os.environ['DB_PORT'] = '3330'
         os.environ['DB_NAME'] = 'joshdb'
         os.environ['DB_TYPE'] = 'mysql'
 
         env = ['DB_USER','DB_PASSWORD','DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_TYPE']
         conf = ['user','password','host','port', 'db', 'type']
         config = {cnfVal: os.getenv(dbVal).rstrip() for dbVal,cnfVal in zip(env,conf)}
-        config['debug'] = True
-
-        # create event loop & start test coro
-        loop = asyncio.new_event_loop()
+        #config['debug'] = True
 
         db = data.Database.create(
             **config,
             cache_enabled=True, 
-            loop=loop
+            loop=asyncio.get_event_loop()
         )
         
         # Start tests
-        loop.run_until_complete(async_test(db))
-        loop.close()
+        asyncio.run(async_test(db))
 
-        # test sync functions
-        db = data.Database(**config)
-        db._run_async_tasks(db.load_tables())
-        #db.enable_cache()
-        test(db)
     def test_run_sqlite_test(self):
-        # create event loop & start test coro
-        loop = asyncio.new_event_loop()
-        
         # test async load inside event loop
         db = data.Database.create(
                 database="testdb",
                 cache_enabled=True,
-                loop=loop,
+                loop=asyncio.get_event_loop(),
                 debug=True
             )
-        loop.run_until_complete(async_test(db))
-        loop.close()
-        # test sync functions
-        db = data.Database(
-                database="testdb",
-                debug=True
-            )
-        db._run_async_tasks(db.load_tables())
-        #db.enable_cache()
-        test(db)
+        asyncio.run(async_test(db))
         
-        ref_database = data.Database(
-            database="testdb",
-            debug=True
-            )
-        ref_database._run_async_tasks(
-            ref_database.load_tables())
-        print(ref_database.tables)
-        colast_names = ['order_num', 'date', 'trans', 'symbol', 'qty', 'price', 'after_hours']
-        for col in colast_names:
-            assert col in ref_database.tables['stocks'].columns, f"missing column {col}"
-       
-        
-def test(db):
-    """
-    Tests synchronus functions which should be run if no event loop exists
-    """
-
-    # key - value col insertion using tb[keyCol] = valCol
-    db.tables['keystore']['key1'] = 'value1'
-    assert db.tables['keystore']['key1'] == 'value1', "value retrieval failed for key-value table"
-
-    # key - value col update using setitem
-    db.tables['keystore']['key1'] = 'newValue1'
-    assert db.tables['keystore']['key1'] == 'newValue1', "update failed using setitem"
-
-    # double col insertion using json
-
-    db.tables['keystore']['config1'] = {'a': 1, 'b': 2, 'c': 3}
-    assert 'config1' in  db.tables['keystore'], "insertion failed using setitem for json data"
-
-
-    # Update Data via __setitem__
-    db.tables['stocks'][2] = {'symbol': 'NTNX', 'trans': {'type': 'BUY'}}
-    # Select via getItem
-    sel = db.tables['stocks'][2]
-    print(sel)
-    assert sel['trans']['type'] == 'BUY' and sel['symbol'] == 'NTNX', f"values not correctly updated"
-
-    # Check 'in' functioning
-    assert 2 in db.tables['stocks'], "order 2 should still exist"
-    print(sel)
-
-    # Check 'in' functioning for db
-
-    assert 'stocks' in db, "stocks table should still exist here"
-
 async def async_test(db):
     db = await db
     import random
@@ -326,7 +259,7 @@ async def async_test(db):
                 'positions.name': position
                 }
             )
-        assert len(join_sel) == count, f"expected number of {position}'s' is {count}, found {len(join_sel)}"
+        assert len(join_sel) == count, f"expected number of {position}'s' is {count}, found {len(join_sel)} for {join_sel}"
     for department in ['HR', 'Marketing', 'Support', 'Sales']:
         for position, count in [('Director', 1),('Manager', 2), ('Rep', 4), ('Intern', 8)]:
             join_sel = await db.tables['employees'].select(
