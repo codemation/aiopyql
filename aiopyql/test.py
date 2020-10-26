@@ -6,7 +6,7 @@ class TestData(unittest.TestCase):
         os.environ['DB_USER'] = 'josh'
         os.environ['DB_PASSWORD'] = 'abcd1234'
         os.environ['DB_HOST'] = 'localhost' if not 'DB_HOST' in os.environ else os.environ['DB_HOST']
-        os.environ['DB_PORT'] = '3330'
+        os.environ['DB_PORT'] = '3306'
         os.environ['DB_NAME'] = 'joshdb'
         os.environ['DB_TYPE'] = 'mysql'
 
