@@ -1,4 +1,5 @@
 import data, os, unittest, json, asyncio
+import exceptions
 
 
 class TestData(unittest.TestCase):
@@ -6,7 +7,7 @@ class TestData(unittest.TestCase):
         os.environ['DB_USER'] = 'josh'
         os.environ['DB_PASSWORD'] = 'abcd1234'
         os.environ['DB_HOST'] = 'localhost' if not 'DB_HOST' in os.environ else os.environ['DB_HOST']
-        os.environ['DB_PORT'] = '3306'
+        os.environ['DB_PORT'] = '3306g'
         os.environ['DB_NAME'] = 'joshdb'
         os.environ['DB_TYPE'] = 'mysql'
 
@@ -434,7 +435,7 @@ async def async_test(db):
     try:
         sel = await db.tables['stocks'].select('*', where={'doesNotExist': 'doesNotExist'})
     except Exception as e:
-        assert type(e) == data.InvalidInputError, "select should have resulted in exception"
+        assert type(e) == exceptions.InvalidInputError, "select should have resulted in exception"
 
     # Iter Check
     sel = [row async for row in db.tables['stocks']]
@@ -501,7 +502,7 @@ async def async_test(db):
     await db.tables['stocks'].delete(where={'order_num': 1, 'after_hours': False})
     sel = await db.tables['stocks'].select('*', where={'order_num': 1, 'after_hours': False})
     print(sel)
-    assert len(sel) < 1, "delete should have removed order_num 1"
+    assert len(sel) < 1, f"delete should have removed order_num 1, found {sel}"
 
     # Update Data
     #await db.tables['stocks'].update(
