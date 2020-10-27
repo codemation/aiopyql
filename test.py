@@ -1,4 +1,5 @@
-import data, os, unittest, json, asyncio
+import os, unittest, json, asyncio
+from aiopyql import data
 from aiopyql.exceptions import InvalidInputError
 
 
@@ -7,12 +8,12 @@ class TestData(unittest.TestCase):
         os.environ['DB_USER'] = 'josh'
         os.environ['DB_PASSWORD'] = 'abcd1234'
         os.environ['DB_HOST'] = 'localhost' if not 'DB_HOST' in os.environ else os.environ['DB_HOST']
-        os.environ['DB_PORT'] = '3306g'
+        os.environ['DB_PORT'] = '3306'
         os.environ['DB_NAME'] = 'joshdb'
         os.environ['DB_TYPE'] = 'mysql'
 
         env = ['DB_USER','DB_PASSWORD','DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_TYPE']
-        conf = ['user','password','host', 'port', 'database', 'type']
+        conf = ['user','password','host', 'port', 'database', 'db_type']
         config = {cnfVal: os.getenv(dbVal).rstrip() for dbVal,cnfVal in zip(env,conf)}
         #config['debug'] = True
 
@@ -56,7 +57,7 @@ async def async_test(db):
                 assert str(value) == str(sel[0][col]), f"value {selection[0][col]} returned from select is not what was inserted {value}."
 
 
-    assert str(type(db)) == "<class 'data.Database'>", "failed to create data.Database object)"
+    assert str(type(db)) == "<class 'aiopyql.data.Database'>", "failed to create data.Database object)"
 
     await db.create_table(
         'stocks', 

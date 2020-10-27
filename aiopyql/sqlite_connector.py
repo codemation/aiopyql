@@ -1,5 +1,5 @@
 from aiosqlite import connect
-from utilities import flatten, no_blanks, inner, TableColumn
+from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
 import json
 
 def get_db_manager():

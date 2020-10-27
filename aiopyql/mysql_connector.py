@@ -1,5 +1,5 @@
 from aiomysql import create_pool
-from utilities import flatten, no_blanks, inner, TableColumn
+from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
 import json
 def get_db_manager():
     """

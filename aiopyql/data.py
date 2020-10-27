@@ -118,15 +118,15 @@ Mysql
         based on database type, setup connection / cursor for database
         """
         if self.type == 'mysql':
-            from mysql_connector import get_db_manager, get_cursor_manager, load_tables, validate_where_input
+            import aiopyql.mysql_connector as connector 
         if self.type == 'sqlite':
-            from sqlite_connector import get_db_manager, get_cursor_manager, load_tables, validate_where_input
+            import aiopyql.sqlite_connector as connector
 
-        self.connect = get_db_manager()
-        self.cursor = get_cursor_manager(self)
-        self.load_tables = load_tables
+        self.connect = connector.get_db_manager()
+        self.cursor = connector.get_cursor_manager(self)
+        self.load_tables = connector.load_tables
         def db_validate_where_input(tables, where):
-            return validate_where_input(self, tables, where)
+            return connector.validate_where_input(self, tables, where)
         self._validate_where_input = db_validate_where_input
     def __del__(self):
         self.queue_process_task.cancel()
