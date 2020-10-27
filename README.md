@@ -1,5 +1,12 @@
 # aiopyql
-Asyncio ORM(Object-relational mapping) for accessing, inserting, updating, deleting data within RBDMS tables using python, based on the synchronus ORM [pyql](https://github.com/codemation/pyql)
+A fast and easy-to-use asyncio ORM(Object-relational Mapper) for performing C.R.U.D. ops within RBDMS tables using python. 
+
+## Key Features
+- fast
+- asyncio ready 
+- database / table query cache
+- SQL-like query syntax
+- Schema discovery 
 
 ### Instalation
 
@@ -29,63 +36,83 @@ Use install script to install the aiopyql into the activated environment librari
 A Database object can be created both in and out of an event loop, but the Database.create() factory coro ensures
 load_tables() is processed to load existing tables. 
 
-### DB connection
-
-        import asyncio
-        from aiopyql import data
-
-        async def main():
-
-            #sqlite connection
-            sqlite_db = await data.Database.create(
-                database="testdb" # if no type specified, default is sqlite
-            )
-
-            # mysql connection
-            mysql_db = await data.Database.create(
-                database='mysql_database',
-                user='mysqluser',
-                password='my-secret-pw',
-                host='localhost',
-                type='mysql'
-                )
-
-            # more db logic goes here
-
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(main())
-
-Existing tables schemas within databases are loaded when database object is instantiated via .create and ready for use immedielty. 
-
-If created using db = data.Database(database='testdb'), which is synchronus, the .load_tables() coro must be run manually within an event loop or _run_async_tasks utility func
-
-        # synchronus 
-        db = data.Database(database='testdb')
-        db._run_async_tasks(db.load_tables())
-
-_run_async_tasks cannot be used within running event loop
-
-### Forking, Threads & Cache Saftey
-The data.Database object can be safely forked by a parent proccess or shared amoung threads IF CACHE IS DISABLED. As all communication occurs via separate atomic transactions in the database, the only expected deviation is time-based. Data read is data written.  
-
-Cache cannot be trusted if table changes occur amoung parelell threads / forked processes, as data read may be from Cache and threads / forked processes cannot propogate their state amoung each other. 
-
-The benifits provided by cache can greately improve the performance of an application, but so when caching is enabled, a single process should be allowed access to write to the database. 
-
-### Database Read Cache 
-Database read cache provides read query based caching. This cache is accessed when a duplicate query is received before any table changes. This is capable of providing relief for more expensive & less explicit querries that might span multiple tables ( via table joins ). 
-
-Database cache is invalidated the query references a table where a change occured - INSERT - UPDATE - DELETE
-
-Database cache is enabled by passing 'cache_enabled=True' into data.Database(..) or by setting db.cache_enabled=True 
-
-
     import asyncio
     from aiopyql import data
 
     async def main():
 
-        #sqlite connection - with cache
+        #sqlite connection
+        sqlite_db = await data.Database.create(
+            database="testdb"
+        )
+        
+        # create table
+        await db.create_table(
+            'keystore',
+            [
+                ('key', str, 'UNIQUE NOT NULL'),
+                ('value', str)
+            ],
+            'key',
+            cache_enabled=True
+        )
+
+        # insert
+        await db.tables['keystore'].insert(
+            key='foo',
+            value={'bar': 30}
+        )
+        
+        # update
+        await db.tables['keystore'].update(
+            value={'bar': 31},
+            where={'key': 'foo'}
+        )
+
+        # delete
+        await db.tables['keystore'].delete(
+            where={'key': 'foo'}
+        )
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())
+
+## Recipies
+- [FastAPI](./receipies/fastapi_aiopyql.py)
+
+## Mysql
+<br>
+Note: if no type specified, default is sqlite
+
+    import asyncio
+    from aiopyql import data
+
+    async def main():
+        mysql_db = await data.Database.create(
+            database='mysql_database',
+            user='mysqluser',
+            password='my-secret-pw',
+            host='localhost',
+            port=3306,
+            type='mysql'
+        )
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())
+
+Existing tables schemas within databases are loaded when database object is instantiated via .create and ready for use immedielty. 
+
+## Database Read Cache 
+Database read cache provides read query based caching. This cache is accessed when a duplicate query is received before any table changes. This is capable of providing relief for more expensive & less explicit querries that might span multiple tables ( via table joins ). 
+
+A Database read cach entry will be invalidated if an INSERT - UPDATE - DELETE query runs against a table referenced by the cached entry. 
+
+
+### Usage
+
+    import asyncio
+    from aiopyql import data
+
+    async def main():
 
         sqlite_db = await data.Database.create(
             database="testdb",   # if no type specified, default is sqlite
@@ -93,22 +120,66 @@ Database cache is enabled by passing 'cache_enabled=True' into data.Database(..)
             cache_length=256     # Default 128 if cache is enabled
         )
 
-        # mysql connection - with cache
+Enable on existing Database
 
-        mysql_db = await data.Database.create(
-            database='mysql_database',
-            user='mysqluser',
-            password='my-secret-pw',
-            host='localhost',
-            type='mysql',
-            cache_enabled=True,
-            cache_length=512 
-        )
+    sqlite_db.enable_cache()
 
-        # more db logic goes here
+Disable Cache & clear cached entries from memory
+
+    sqlite_db.disable_cache()
+
+## Table Cache
+<br>
+Key Features:
+<br>
+
+- Row based read cache, which returns cached rows based on table primary key
+- 'select *' querries will load both Database & Table Cache
+- updates to table also update existing cache entries 
+- database cache invalidation is separated from table cache invalidation
+- Last-Accessed-Last-Out expiration - frequently accessed data remains cached
+
+### Usage:
+
+    await db.create_table(
+        'keystore',
+        [
+            ('key', str, 'UNIQUE NOT NULL'),
+            ('value', str)
+        ],
+        'key',
+        cache_enabled=True
+        cache_length=256
+    )
+Enable Cache on existing table
+
+    # turn on
+    db.tables['keystore'].enable_cache()
+
+Disable & Remove cached entries
+
+    db.tables['keystore'].disable_cache()
 
 
-### Table Create
+#### Cache Load Events
+- A complete row is accessed via select = '*', with our without conditions
+- A complete row is inserted # Complete meaning value for all rows in table
+
+#### Cache Update Events
+- An update is issued which includes conditions matching a cached row' primary key
+
+#### Cache Delete Events
+- A Delete is issued against a row with cached primary key
+- Table max_cache_len is reached and the row was the oldest of the last referenced keys
+
+### Forking & Cache Safety
+The Database object can be safely forked by a parent process IF CACHE IS DISABLED. Cache from one process should be be trusted as consistent with another process when a change occurs, as invalidation does not propagate to all forks. 
+<br><br>
+Cache can be safely used amoung co-routines within the same event_loop. 
+
+## Table Create
+<br>
+
 Requires List of at least 2 item tuples, max 3
 
 ('column_name', type, 'modifiers')
@@ -154,7 +225,8 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
     +-----------+---------+------+-----+---------+----------------+
     6 rows in set (0.00 sec)
 
-#### Creating Tables with Foreign Keys
+## Creating Tables with Foreign Keys
+<br>
 
     await db.create_table(
         'departments', 
@@ -202,32 +274,10 @@ Note: Unique constraints are not validated by aiopyql but at db, so if modifier 
         cache_enabled=True,
         cache_length=256
     )
-
-#### Table Cache
-
-Table cache is a row based read cache, which is able to return cached rows based on table primary key, and thus rewards querries that utilize primary keys. 
-
-Table cache can work together with Database cache for faster querries as generic 'select *' querries will load both Database & Table Cache, but Table Cache will persist much longer if frequent table changes are expected 
-
-Table cache differs from the Database cache in that table changes do not invalidate table cache, they update the cache. 
-
-Table cache expires upon reaching 'max_cache_len' or a deletion of a corresponding row. 
-
-Table Cache is enabled by passing cache_enabled=True into db.create_table() enabled/disabled at any time using db.table['table'].cache_enabled = True|False. 
-
-Cache is loaded in the following events:
-- A complete row is accessed via select = '*', with our without conditions
-- A complete row is inserted # Complete meaning value for all rows in table
-
-Cache is updated in the folloiwng events:
-- An update is issued which includes conditions matching a cached row' primary key
-
-Cache is deleted in the following events:
-- A Delete is issued against a row with cached primary key
-- Table max_cache_len is reached and the row was the oldest of the last referenced keys
-
     
-### Insert Data
+## Insert Data
+<br>
+
 Requires key-value pairs - may be input using dict or the following
 
 Un-packing
@@ -237,7 +287,10 @@ Un-packing
     await db.tables['stocks'].insert(**trade)
 
     query:
-        INSERT INTO stocks (date, trans, symbol, qty, price) VALUES ("2006-01-05", "BUY", "RHAT", 100, 35.14)
+        INSERT INTO stocks 
+            (date, trans, symbol, qty, price) 
+        VALUES 
+            ("2006-01-05", "BUY", "RHAT", 100, 35.14)
 
 In-Line
 
@@ -253,57 +306,55 @@ In-Line
     query:
         INSERT INTO stocks (date, trans, symbol, qty, price) VALUES ("2006-01-05", "BUY", "RHAT", 200, 65.14)
 
-#### Inserting Special Data 
-- Columns of type string can hold JSON dumpable python dictionaries as JSON strings and are automatically converted back into dicts when read. 
-- Nested Dicts are also Ok, but all items should be JSON compatible data types
+## Inserting Special Data
+<br>
+Columns of type string can hold JSON dumpable python dictionaries as JSON strings and are automatically converted back into dicts when read. 
 
+Nested Dicts are also Ok, but all items should be JSON compatible data types
 
-        tx_data = {
-            'type': 'BUY', 
-            'condition': {
-                'limit': '36.00', 
-                'time': 'end_of_trading_day'
-            }
+    tx_data = {
+        'type': 'BUY', 
+        'condition': {
+            'limit': '36.00', 
+            'time': 'end_of_trading_day'
         }
+    }
 
-        trade = {
-            'order_num': 1, 'date': '2006-01-05', 
-            'trans': tx_data, # 
-            'symbol': 'RHAT', 
-            'qty': 100, 'price': 35.14, 'after_hours': True
-        }
+    trade = {
+        'order_num': 1, 'date': '2006-01-05', 
+        'trans': tx_data, # 
+        'symbol': 'RHAT', 
+        'qty': 100, 'price': 35.14, 'after_hours': True
+    }
 
-        await db.tables['stocks'].insert(**trade)
-        query:
-            INSERT INTO stocks 
-                (
-                    order_num, 
-                    date, trans, 
-                    symbol, 
-                    qty, 
-                    price, 
-                    after_hours
-                ) 
-                VALUES 
-                    (
-                        1, 
-                        "2006-01-05", 
-                        '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
-                        "RHAT", 
-                        100, 
-                        35.14, 
-                        True
-                    )
-        result:
-            In:
-                sel = await db.tables['stocks'][1]
-                print(sel['trans']['condition'])
-            Out: #
-                {'limit': '36.00', 'time': 'end_of_trading_day'}
+    await db.tables['stocks'].insert(**trade)
+
+<br>
+
+    INSERT INTO 
+        stocks 
+        (
+            order_num, date, trans, symbol, 
+            qty, price, after_hours
+        ) 
+        VALUES 
+            (
+                1, "2006-01-05", 
+                '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
+                "RHAT", 100, 35.14, True
+            )
+<br>
+
+    sel = await db.tables['stocks'][1]
+    print(sel['trans']['condition'])
+
+<br>
+
+    {'limit': '36.00', 'time': 'end_of_trading_day'}
 
         
-### Select Data
-
+## Select Data
+<br><br>
 All Rows & Columns in table
 
     await db.tables['employees'].select('*')
@@ -324,8 +375,8 @@ All Rows & Specific Columns with Matching Values
         'position_id', 
         where={
             'id': 1000
-            }
-        )
+        }
+    )
 
 All Rows & Specific Columns with Multple Matching Values
 
@@ -335,78 +386,99 @@ All Rows & Specific Columns with Multple Matching Values
         'position_id', 
         where={
             'id': 1000, 
-            'name': 'Frank Franklin'}
-        )
+            'name': 'Frank Franklin'
+        }
+    )
 
-#### Advanced Usage:
-
+## Advanced Usage:
+<br><br>
 All Rows & Columns from employees, Combining ALL Rows & Columns of table positions (if foreign keys match)
 
     # Basic Join
     await db.tables['employees'].select('*', join='positions')
-    query:
-        SELECT * FROM employees JOIN positions ON employees.position_id = positions.id
-    output:
-        [
-            {
-                'employees.id': 1000, 
-                'employees.name': 'Frank Franklin', 
-                'employees.position_id': 100101, 
-                'positions.name': 'Director', 
-                'positions.department_id': 1001
-            },
-            ...
-        ]
+
+<br>
+
+    SELECT *
+    FROM 
+        employees 
+    JOIN positions ON 
+        employees.position_id = positions.id
+    
+<br>
+
+    [
+        {
+            'employees.id': 1000, 
+            'employees.name': 'Frank Franklin', 
+            'employees.position_id': 100101, 
+            'positions.name': 'Director', 
+            'positions.department_id': 1001
+        },
+        ...
+    ]
+
 All Rows & Specific Columns from employees, Combining All Rows & Specific Columns of table positions (if foreign keys match)
 
-    # Basic Join 
+### Basic Join 
+
     await db.tables['employees'].select(
         'employees.name', 
         'positions.name', 
         join='positions' # # possible only if foreign key relation exists between employees & positions
         )
-    query:
-        SELECT employees.name,positions.name FROM employees JOIN positions ON employees.position_id = positions.id
-    output:
-        [
-            {'employees.name': 'Frank Franklin', 'positions.name': 'Director'}, 
-            {'employees.name': 'Eli Doe', 'positions.name': 'Manager'},
-            ...
-        ]
+<br>
 
-All Rows & Specific Columns from employees, Combining All Rows & Specific Columns of table positions (if foreign keys match) with matching 'position.name' value
+    SELECT 
+        employees.name,positions.name 
+    FROM employees 
+    JOIN positions ON 
+        employees.position_id = positions.id
+<br>
 
-    # Basic Join with conditions
+    [
+        {'employees.name': 'Frank Franklin', 'positions.name': 'Director'}, 
+        {'employees.name': 'Eli Doe', 'positions.name': 'Manager'},
+        ...
+    ]
+
+
+<br>
+    
+### Basic Join with conditions
+
+join='positions' will only work if the calling table "await db.tables['employees']" has a foreign-key reference to table 'positions'
+
     await db.tables['employees'].select(
         'employees.name', 
         'positions.name', 
-        join='positions', # possible only if foreign key relation exists between employees & positions
+        join='positions', # made possible if foreign key relation exists between employees & positions
         where={
             'positions.name': 'Director'}
         )
-    query:
-        SELECT 
-            employees.name,
-            positions.name 
-        FROM 
-            employees 
-        JOIN positions 
-            ON 
-                employees.position_id = positions.id 
-        WHERE 
-            positions.name='Director'
-    output:
-        [
-            {'employees.name': 'Frank Franklin', 'positions.name': 'Director'}, 
-            {'employees.name': 'Elly Doe', 'positions.name': 'Director'},
-            ..
-        ]
+<br>
 
-All Rows & Specific Columns from employees, Combining Specific Rows & Specific Columns of tables positions & departments
+    SELECT 
+        employees.name,
+        positions.name 
+    FROM 
+        employees 
+    JOIN positions ON 
+        employees.position_id = positions.id 
+    WHERE 
+        positions.name='Director'
 
-Note: join='x_table' will only work if the calling table has a f-key reference to table 'x_table'
+<br>
 
-    # Multi-table Join with conditions
+    [
+        {'employees.name': 'Frank Franklin', 'positions.name': 'Director'}, 
+        {'employees.name': 'Elly Doe', 'positions.name': 'Director'},
+        ..
+    ]
+
+
+### Multi-table Join with conditions
+
     await db.tables['employees'].select(
         'employees.name', 
         'positions.name', 
@@ -422,27 +494,24 @@ Note: join='x_table' will only work if the calling table has a f-key reference t
         where={
             'positions.name': 'Director'}
         )
-    query:
-        SELECT 
-            employees.name,positions.name,
-            departments.name 
-        FROM 
-            employees 
-        JOIN 
-            positions 
-                ON 
-                    employees.position_id = positions.id 
-        JOIN 
-            departments 
-                ON 
-                    positions.department_id = departments.id 
-        WHERE 
-            positions.name='Director'
-    result:
-        [
-            {'employees.name': 'Frank Franklin', 'positions.name': 'Director', 'departments.name': 'HR'}, 
-            {'employees.name': 'Elly Doe', 'positions.name': 'Director', 'departments.name': 'Sales'}
-        ]
+<br>
+
+    SELECT 
+        employees.name,positions.name,
+        departments.name 
+    FROM employees 
+    JOIN positions ON 
+        employees.position_id = positions.id 
+    JOIN departments ON 
+        positions.department_id = departments.id 
+    WHERE 
+        positions.name='Director'
+<br>
+
+    [
+        {'employees.name': 'Frank Franklin', 'positions.name': 'Director', 'departments.name': 'HR'}, 
+        {'employees.name': 'Elly Doe', 'positions.name': 'Director', 'departments.name': 'Sales'}
+    ]
 
 Special Note: When performing multi-table joins, joining columns must be explicity provided. 
 <br>The key-value order is not explicity important, but will determine which column name is present in returned rows
@@ -463,21 +532,21 @@ OR
             {'x_table.a': 'val1', 'x_table.y_id': 'val3'}
         ]
 
-#### Operators
-
+## Operators
+<br><br>
 The Following operators are supported within the list query syntax
 
-'=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'
+    '=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'
 
 Operator Syntax Requires a list-of-lists and supports multiple combined conditions
 
-    #Syntax
 
     await db.tables['table'].select(
         '*',
         where=[[condition1], [condition2], [condition3]]
     )
 
+<br>
 
     await db.tables['table'].select(
         '*',
@@ -488,7 +557,7 @@ Operator Syntax Requires a list-of-lists and supports multiple combined conditio
         ]
     )
 
-Examples:
+### List Syntax - Examples:
 
 Search for rows which contain specified chars using wild card '*' 
 
@@ -499,16 +568,18 @@ Search for rows which contain specified chars using wild card '*'
             ['name', 'like', '*ank*'] # Double Wild Card - Search
         ]
     )
-    query:
+<br>
+
         SELECT id,name FROM employees WHERE name like '%ank%'
-    result:
-        [
-            {'id': 1016, 'name': 'Frank Franklin'}, 
-            {'id': 1018, 'name': 'Joe Franklin'}, 
-            {'id': 1034, 'name': 'Dana Franklin'}, 
-            {'id': 1036, 'name': 'Jane Franklin'}, 
-            {'id': 1043, 'name': 'Eli Franklin'}, 
-        ]
+<br>
+
+    [
+        {'id': 1016, 'name': 'Frank Franklin'}, 
+        {'id': 1018, 'name': 'Joe Franklin'}, 
+        {'id': 1034, 'name': 'Dana Franklin'}, 
+        {'id': 1036, 'name': 'Jane Franklin'}, 
+        {'id': 1043, 'name': 'Eli Franklin'}, 
+    ]
 
 
 Delete Rows matching value comparison
@@ -519,12 +590,9 @@ Delete Rows matching value comparison
             ['id', '<', 2000] # Value Comparison
         ]
     )
-    query:
-        DELETE 
-            FROM 
-                departments 
-            WHERE 
-                id < 2000
+<br>
+        DELETE FROM departments WHERE id < 2000
+<br>
 
 Select Rows using Join and exluding rows with sepcific values
 
@@ -545,107 +613,114 @@ Select Rows using Join and exluding rows with sepcific values
             ]
         ]
     )
-    query:
-        SELECT 
-            * 
-        FROM 
-            employees 
-        JOIN 
-            positions 
-            ON 
-                employees.position_id = positions.id  
-            AND  
-                positions.id = employees.position_id 
-        WHERE 
-            positions.name not in ('Manager', 'Intern', 'Rep') 
-        AND 
-            positions.department_id <> 2001
+<br>
+
+    SELECT * FROM employees 
+    JOIN positions ON 
+        employees.position_id = positions.id  
+    AND  
+        positions.id = employees.position_id 
+    WHERE 
+        positions.name not in ('Manager', 'Intern', 'Rep') 
+    AND 
+        positions.department_id <> 2001
 
 
-#### Special Examples:
+## Special Examples:
+<br><br>
 Bracket indexs can only be used for primary keys and return entire row, if existent
 
     await db.tables['employees'][1000] 
 
-    query:
-        SELECT * 
-        FROM 
-            employees 
-        WHERE 
-            id=1000
-    result:
-        {'id': 1000, 'name': 'Frank Franklin', 'position_id': 100101}
+<br>
+
+    SELECT * FROM employees 
+    WHERE id=1000
+<br>
+
+    {'id': 1000, 'name': 'Frank Franklin', 'position_id': 100101}
 
 Note: As  db.tables['employees'][1000] returns an 'awaitable', sub keys cannot be specified until the object has been 'awaited'
+ 
+    # Incorrect
+    emp_id = await db.tables['employees'][1000]['id']
+<br>
 
-    In: 
-        # Wrong
-        await db.tables['employees'][1000]['id']
-    Out:
-        __main__:1: RuntimeWarning: coroutine was never awaited
-        RuntimeWarning: Enable tracemalloc to get the object allocation traceback
-        Traceback (most recent call last):
-        File "<stdin>", line 1, in <module>
-        TypeError: 'coroutine' object is not subscriptable
+    __main__:1: RuntimeWarning: coroutine was never awaited
+    RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+    Traceback (most recent call last):
+    File "<stdin>", line 1, in <module>
+    TypeError: 'coroutine' object is not subscriptable
+<br>
+
+    # Correct
+    sel = await db.tables['employees'][1000]
+    emp_id = sel['id]
+
     
-    # Right
-        sel = await db.tables['employees'][1000]
-        sel['id]
-
-
-    
-Iterate through table - grab all rows - allowing client side filtering 
+### Iterate through table - grab all rows - allowing client side filtering 
 
     async for row in db.tables['employees']:
         print(row['id], row['name'])
-    query:
-        SELECT * FROM employees
-    result:
-        1000 Frank Franklin
-        1001 Eli Doe
-        1002 Chris Smith
-        1003 Clara Carson
+<br>
+
+    SELECT * FROM employees
+<br>
+
+    1000 Frank Franklin
+    1001 Eli Doe
+    1002 Chris Smith
+    1003 Clara Carson
     
-Using list comprehension
+### Using list comprehension
 
-    sel = [(row['id'], row['name']) async for row in db.tables['employees']]
-    query:
-        SELECT * FROM employees
-    result:
-        [
-            (1000, 'Frank Franklin'), 
-            (1001, 'Eli Doe'), 
-            (1002, 'Chris Smith'), 
-            (1003, 'Clara Carson'),
-            ...
-        ]
+    sel = [tuple(row['id'], row['name']) async for row in db.tables['employees']]
+<br>
 
-### Update Data
+    SELECT * FROM employees
+<br>
 
-Define update values in-line or un-pack
+    [
+        (1000, 'Frank Franklin'), 
+        (1001, 'Eli Doe'), 
+        (1002, 'Chris Smith'), 
+        (1003, 'Clara Carson'),
+        ...
+    ]
+
+## Update Data
+
+<br><br>
+
+#### In-line
 
     await db.tables['stocks'].update(
-        symbol='NTAP',trans='SELL', 
+        symbol='NTAP',
+        trans='SELL', 
         where={'order_num': 1}
-        )
-    query:
-        UPDATE stocks 
-                SET 
-                    symbol = 'NTAP', 
-                    trans = 'SELL' 
-                WHERE 
-                    order_num=1
+    )
 
-Un-Pack
+<br>
+    
+    UPDATE stocks 
+    SET 
+        symbol = 'NTAP', 
+        trans = 'SELL' 
+    WHERE 
+        order_num=1
+
+#### Un-Pack
 
     # JSON Serializable Data 
+
     tx_data = {
         'type': 'BUY', 
         'condition': {
             'limit': '36.00', 
             'time': 'end_of_trading_day'
-            }
         }
+    }
+
     to_update = {
         'symbol': 'NTAP', 
         'trans': tx_data # dict
@@ -655,15 +730,20 @@ Un-Pack
         **to_update, 
         where={'order_num': 1}
         )
-    query:
-        UPDATE stocks 
-            SET 
-                symbol = 'NTAP', 
-                trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}' 
-            WHERE 
-                order_num=1
+<br>
 
-Bracket Assigment - Primary Key name assumed inside Brackets for value
+    UPDATE stocks 
+    SET 
+        symbol = 'NTAP', 
+        trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}' 
+    WHERE 
+        order_num=1
+
+#### Using set_item
+
+    await db.tables['table'].set_item('primary_key': {'column': 'value'})
+
+<br>
 
     #JSON Serializable Data 
 
@@ -679,47 +759,48 @@ Bracket Assigment - Primary Key name assumed inside Brackets for value
         'trans': tx_data, # dict
         'qty': 500}
 
-    # Synchronus only
-    db.tables['stocks'][2] = to_update 
-
-    # Asynchronus
     await db.tables['stocks'].set_item(2, to_update)
+<br>
+    
+    # two resulting db querries
+    # checks that primary_key value 2 exists
 
-    query:
-        # check that primary_key value 2 exists
-        SELECT * FROM stocks WHERE order_num=2
+    SELECT * FROM stocks WHERE order_num=2
 
-        # update 
-        UPDATE stocks 
-            SET
-                symbol = 'NTAP', 
-                trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
-                qty = 500 
-            WHERE order_num=2
+    # update 
 
-    result:
-        await db.tables['stocks'][2]
+    UPDATE stocks 
+    SET
+        symbol = 'NTAP', 
+        trans = '{"type": "BUY", "condition": {"limit": "36.00", "time": "end_of_trading_day"}}', 
+        qty = 500 
+    WHERE order_num=2
+
+<br>
+
+    await db.tables['stocks'][2]
         
-        # beutified
-        {
-            'order_num': 2, 
-            'date': '2006-01-05', 
-            'trans': {
-                'type': 'BUY', 
-                'condition': {
-                    'limit': '36.00', 
-                    'time': 'end_of_trading_day'
-                }
-            }, 
-            'symbol': 'NTAP', 
-            'qty': 500, 
-            'price': 35.16, 
-            'after_hours': True
-        }
+    # beutified
+    {
+        'order_num': 2, 
+        'date': '2006-01-05', 
+        'trans': {
+            'type': 'BUY', 
+            'condition': {
+                'limit': '36.00', 
+                'time': 'end_of_trading_day'
+            }
+        }, 
+        'symbol': 'NTAP', 
+        'qty': 500, 
+        'price': 35.16, 
+        'after_hours': True
+    }
 
 
-### Delete Data 
+## Delete Data 
+<br><br>
 
     await db.tables['stocks'].delete(
         where={'order_num': 1}
-        )
+    )
