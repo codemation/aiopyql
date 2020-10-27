@@ -77,7 +77,9 @@ load_tables() is processed to load existing tables.
     loop.run_until_complete(main())
 
 ## Recipies
-- [FastAPI](./receipies/fastapi_aiopyql.py)
+See other usage examples in [recipies](https://github.com/codemation/aiopyql/blob/master/recipies).
+<br>
+- [FastAPI](https://github.com/codemation/aiopyql/blob/master/recipies/fastapi_aiopyql.py)
 
 ## Mysql
 <br>
