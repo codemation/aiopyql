@@ -12,7 +12,7 @@ class TestData(unittest.TestCase):
         os.environ['DB_TYPE'] = 'mysql'
 
         env = ['DB_USER','DB_PASSWORD','DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_TYPE']
-        conf = ['user','password','host','port', 'db', 'type']
+        conf = ['user','password','host', 'port', 'database', 'type']
         config = {cnfVal: os.getenv(dbVal).rstrip() for dbVal,cnfVal in zip(env,conf)}
         #config['debug'] = True
 
