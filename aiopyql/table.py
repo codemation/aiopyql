@@ -1,7 +1,7 @@
 import json
 from typing import Optional
-from cache import Cache
-from exceptions import InvalidColumnType, InvalidInputError
+from aiopyql.cache import Cache
+from aiopyql.exceptions import InvalidColumnType, InvalidInputError
 
 class Table:
     def __init__(

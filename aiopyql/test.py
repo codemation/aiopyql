@@ -1,5 +1,5 @@
 import data, os, unittest, json, asyncio
-import exceptions
+from aiopyql.exceptions import InvalidInputError
 
 
 class TestData(unittest.TestCase):
@@ -435,7 +435,7 @@ async def async_test(db):
     try:
         sel = await db.tables['stocks'].select('*', where={'doesNotExist': 'doesNotExist'})
     except Exception as e:
-        assert type(e) == exceptions.InvalidInputError, "select should have resulted in exception"
+        assert type(e) == InvalidInputError, "select should have resulted in exception"
 
     # Iter Check
     sel = [row async for row in db.tables['stocks']]

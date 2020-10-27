@@ -7,9 +7,9 @@ from typing import (
 from concurrent.futures._base import CancelledError
 from asyncio.base_futures import InvalidStateError
 
-from utilities import TableColumn
-from cache import Cache
-from table import Table
+from aiopyql.utilities import TableColumn
+from aiopyql.cache import Cache
+from aiopyql.table import Table
 
 class Database:
     """
