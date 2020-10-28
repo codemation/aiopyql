@@ -31,7 +31,7 @@ def get_cursor_manager(database):
                 except Exception as e:
                     database.log.exception(f"error yielding cursor {repr(e)}")
             if commit:
-                await database.commit() 
+                await db.commit() 
         return                
     return mysql_cursor
 def show_tables(database):
