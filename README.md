@@ -215,7 +215,7 @@ Some Column modifiers apply for column options i.e
 
     AUTOINCREMENT  (sqlite)
     AUTO_INCREMENT (mysql)
-    
+
 See DB documentation for reference.
 
 Optional:
@@ -423,7 +423,7 @@ All Rows & Specific Columns with Multple Matching Values
     )
 
 ## Advanced Usage:
-<br><br>
+<br>
 All Rows & Columns from employees, Combining ALL Rows & Columns of table positions (if foreign keys match)
 
     # Basic Join
@@ -565,7 +565,7 @@ OR
         ]
 
 ## Operators
-<br><br>
+<br>
 The Following operators are supported within the list query syntax
 
     '=', '==', '<>', '!=', '>', '>=', '<', '<=', 'like', 'in', 'not in', 'not like'
@@ -659,7 +659,7 @@ Select Rows using Join and exluding rows with sepcific values
 
 
 ## Special Examples:
-<br><br>
+<br>
 Bracket indexs can only be used for primary keys and return entire row, if existent
 
     await db.tables['employees'][1000] 
@@ -722,7 +722,7 @@ Note: As  db.tables['employees'][1000] returns an 'awaitable', sub keys cannot b
 
 ## Update Data
 
-<br><br>
+<br>
 
 #### In-line
 
@@ -831,7 +831,7 @@ Note: As  db.tables['employees'][1000] returns an 'awaitable', sub keys cannot b
 
 
 ## Delete Data 
-<br><br>
+<br>
 
     await db.tables['stocks'].delete(
         where={'order_num': 1}
