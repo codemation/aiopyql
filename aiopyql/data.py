@@ -54,7 +54,8 @@ Mysql
             max_cache_len=max_cache_len,
             debug=debug,
             log=log,
-            loop=loop
+            loop=loop,
+            **kw
         )
         await db.load_tables(db)
         return db
@@ -67,8 +68,6 @@ Mysql
         debug: Optional[bool] = False,
         log: Optional[logging.Logger] = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
-        
-
         **kw):
         self.db_name = database
         self.loop = asyncio.get_running_loop() if not loop else loop
@@ -96,7 +95,7 @@ Mysql
         self.max_cache_len = max_cache_len
         self.cache = None
         if self.cache_enabled:
-            self.enable_cache(**kw)
+            self.enable_cache()
 
         # query queue
         self._query_queue = asyncio.Queue()
