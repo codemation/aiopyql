@@ -386,7 +386,7 @@ Nested Dicts are also Ok, but all items should be JSON compatible data types
 
         
 ## Select Data
-<br><br>
+<br>
 All Rows & Columns in table
 
     await db.tables['employees'].select('*')
