@@ -26,7 +26,7 @@ Use install script to install the aiopyql into the activated environment librari
 
     (aiopyql-env)$ cd aiopyql; sudo ./install.py install
 
-### Compatable Databases - Currently
+### Compatable Databases
 
 - mysql
 - sqlite
@@ -182,6 +182,27 @@ Cache can be safely used amoung co-routines within the same event_loop.
 ## Table Create
 <br>
 
+### Usage
+
+    db.create_table(
+        'table_name',
+        [
+            ('col_name', <col_type[int,str,float,byte, bool]>, 'col_mods'),
+            .
+            ..
+        ],
+        prim_key='<col_name>',
+        foreign_keys={
+            '<col_name>': {
+                'table': '<ref_table_name>'
+                'ref': '<ref_table_column>',
+                'mods': 'ON UPDATE CASCADE'
+            }
+        },
+        cache_enabled = True | False(default),
+        max_cache_len = 125(default)
+    )
+
 Requires List of at least 2 item tuples, max 3
 
 ('column_name', type, 'modifiers')
@@ -190,12 +211,18 @@ Requires List of at least 2 item tuples, max 3
 - types: str, int, float, byte, bool, None # JSON dumpable dicts fall under str types
 - modifiers: NOT NULL, UNIQUE, AUTO_INCREMENT
 
-Optional:
-- cache_enabled = True|False
-- max_cache_len = 125 #Default
+Some Column modifiers apply for column options i.e 
 
-Note Some differences may apply for column options i.e AUTOINCREMENT(sqlite) vs AUTO_INCREMENT(mysql) - 
+    AUTOINCREMENT  (sqlite)
+    AUTO_INCREMENT (mysql)
+    
 See DB documentation for reference.
+
+Optional:
+    
+    cache_enabled = True | False (Default)
+    
+    max_cache_len = 125 (Default)
 
 Note: Unique constraints are not validated by aiopyql but at db, so if modifier is supported it will be added when table is created.
 
@@ -306,7 +333,10 @@ In-Line
     )
 
     query:
-        INSERT INTO stocks (date, trans, symbol, qty, price) VALUES ("2006-01-05", "BUY", "RHAT", 200, 65.14)
+        INSERT INTO stocks 
+            (date, trans, symbol, qty, price) 
+        VALUES 
+            ("2006-01-05", "BUY", "RHAT", 200, 65.14)
 
 ## Inserting Special Data
 <br>
