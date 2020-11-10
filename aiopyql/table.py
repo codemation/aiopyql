@@ -242,7 +242,7 @@ class Table:
                 count+=1
         return join
 
-    async def select(self, *selection, **kw):
+    async def select(self, selection, *args,  **kw):
         """
         Usage: returns list of dictionaries for each selection in each row. 
             tb = db.tables['stocks_new_tb2']
@@ -256,8 +256,9 @@ class Table:
             # Using Primary key only
             sel = tb[0] # select * from <table> where <table_prim_key> = <val>
         """
-        col_select = list(selection) if not isinstance(selection, list) else selection
+        col_select = [selection] + list(args) if not isinstance(selection, list) else selection
         col_select = [i for i in col_select]
+        print(f"col_select {col_select}")
 
         if 'join' in kw and isinstance(kw['join'], str):
             if kw['join'] in [self.foreign_keys[k]['table'] for k in self.foreign_keys]:
@@ -309,7 +310,7 @@ class Table:
 
             col_refs = {}
             keys = []
-            for col in selection:
+            for col in col_select: # selection:
                 if not col in self.columns:
                     if not '.' in col:
                         raise InvalidColumnType(f"column {col} is not a valid column", f"valid column types {self.columns}")
@@ -321,7 +322,7 @@ class Table:
                     
                 col_refs[col] = self.columns[col]
                 keys.append(col)
-            selection = ','.join(selection)
+            selection = ','.join(col_select)
 
         # validates where conditions provided and where query
         where_sel = self.__where(kw)
