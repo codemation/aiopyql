@@ -129,11 +129,13 @@ Mysql
         self._validate_where_input = db_validate_where_input
     def __del__(self):
         self.queue_process_task.cancel()
-    def close(self):
+    async def close(self):
         """
         stops running running process task
         """
         self.queue_process_task.cancel()
+        result = await asyncio.gather(self.queue_process_task)
+        self.log.debug(f"closing database - result {result}")
     def __str__(self):
         return self.db_name
     def enable_cache(self):
@@ -233,6 +235,8 @@ Mysql
         try:
             last_exception = None
             async for conn in self.cursor(commit=commit):
+                self.log.debug(f"__process_queue conn: {conn}")
+
                 querries_to_commit = []
                 last_commit = time.time()
                 queue_empty = True
@@ -240,7 +244,9 @@ Mysql
                     while True:
                         try:
                             if queue_empty:
+                                self.log.debug("queue_empty waiting for new query")
                                 query_id, query = await self._query_queue.get()
+                                self.log.debug(f"received new query: {query}")
                                 queue_empty = False
                             else:
                                 query_id, query = self._query_queue.get_nowait()
@@ -255,6 +261,7 @@ Mysql
                             query = query.split(';') if ';' in query else [query]
                         except Exception as e:
                             if not isinstance(e, asyncio.queues.QueueEmpty):
+                                self.log.exception(f"error waiting / preparing query")
                                 last_exception = e
                                 break
                             if len(querries_to_commit) > 0:
@@ -304,20 +311,20 @@ Mysql
                             self.log.exception(f"error running query: {query}")
                             results = e
                         if not query_commit:
-                            #self.queue_results[query_id] = results
                             await self.queue_results[query_id].put(results)
+                    
                 except Exception as e:
                     if not isinstance(e, CancelledError):
                         self.log.exception(f"error in __process_queue, closing db connection")
-                    continue
-                                                      
+                self.log.debug(f"closing cursor connecting")
+            self.log.exception(f"closed cursor connection")                             
         except Exception as e:
             if not e in {InvalidStateError, CancelledError}:
                 self.log.exception(f"error during __process_queue")
 
         # un-locks processing so new processing tasks can start
         self.queue_processing = False
-
+        self.log.debug(f"completed processing items in queue")
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
