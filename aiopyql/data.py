@@ -129,6 +129,11 @@ Mysql
         self._validate_where_input = db_validate_where_input
     def __del__(self):
         self.queue_process_task.cancel()
+    def close(self):
+        """
+        stops running running process task
+        """
+        self.queue_process_task.cancel()
     def __str__(self):
         return self.db_name
     def enable_cache(self):
@@ -328,6 +333,7 @@ Mysql
         except Exception as e:
             self.log.exception(f"error while executing query {query}")
             result = e
+        del self.queue_results[query_id]
         #result = self.queue_results.pop(query_id)
         if isinstance(result, Exception):
             raise result
