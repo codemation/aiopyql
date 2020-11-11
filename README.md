@@ -33,9 +33,6 @@ Use install script to install the aiopyql into the activated environment librari
 
 ## Getting Started 
 
-A Database object can be created both in and out of an event loop, but the Database.create() factory coro ensures
-load_tables() is processed to load existing tables. 
-
     import asyncio
     from aiopyql import data
 
