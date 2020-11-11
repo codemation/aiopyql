@@ -201,11 +201,11 @@ Mysql
             query_id, q, q_coro = query 
             self.log.debug(f"{self.db_name} - execute: {q}")
             await q_coro
-            self.queue_results[query_id] = []
+            await self.queue_results[query_id].put([])
         except Exception as e:
             self.log.exception(f"error running query: {query}")
             results = e
-            self.queue_results[query_id] = results
+            await self.queue_results[query_id].put(results)
 
     async def __commit_querries(self, connection, querries):
         self.log.debug(f"__commit_querries started for {querries}")
@@ -299,7 +299,8 @@ Mysql
                             self.log.exception(f"error running query: {query}")
                             results = e
                         if not query_commit:
-                            self.queue_results[query_id] = results
+                            #self.queue_results[query_id] = results
+                            await self.queue_results[query_id].put(results)
                 except Exception as e:
                     if not isinstance(e, CancelledError):
                         self.log.exception(f"error in __process_queue, closing db connection")
@@ -316,18 +317,18 @@ Mysql
 
     async def execute(self, query, commit=False):
         query_id = str(uuid.uuid1())
+        self.queue_results[query_id] = asyncio.Queue(1)
         await self._query_queue.put((query_id, query))
-
         # start queue procesing task
         if not self.queue_processing:
             self.queue_process_task = self.loop.create_task(self.__process_queue())
             await asyncio.sleep(0.005)
-
-        while not query_id in self.queue_results:
-            await asyncio.sleep(0.005)
-            if not self.queue_processing:
-                self.queue_process_task = self.loop.create_task(self.__process_queue())
-        result = self.queue_results.pop(query_id)
+        try:
+            result = await self.queue_results[query_id].get()
+        except Exception as e:
+            self.log.exception(f"error while executing query {query}")
+            result = e
+        #result = self.queue_results.pop(query_id)
         if isinstance(result, Exception):
             raise result
         return result
