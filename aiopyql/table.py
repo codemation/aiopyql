@@ -258,7 +258,6 @@ class Table:
         """
         col_select = [selection] + list(args) if not isinstance(selection, list) else selection
         col_select = [i for i in col_select]
-        print(f"col_select {col_select}")
 
         if 'join' in kw and isinstance(kw['join'], str):
             if kw['join'] in [self.foreign_keys[k]['table'] for k in self.foreign_keys]:
