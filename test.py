@@ -13,10 +13,10 @@ class TestData(unittest.TestCase):
         os.environ['DB_TYPE'] = 'mysql'
 
         env = ['DB_USER','DB_PASSWORD','DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_TYPE']
-        conf = ['user','password','host', 'port', 'database', 'db_type']
+        conf = ['user','password', 'host', 'port', 'database', 'db_type']
         config = {cnfVal: os.getenv(dbVal).rstrip() for dbVal,cnfVal in zip(env,conf)}
         #config['debug'] = True
-
+        print(config)
         db = data.Database.create(
             **config,
             cache_enabled=True,
@@ -61,7 +61,7 @@ async def async_test(db):
 
     await db.create_table(
         'stocks', 
-        [    
+        columns = [    
             ('order_num', int, 'AUTO_INCREMENT' if db.type == 'mysql' else 'AUTOINCREMENT'),
             ('date', str),
             ('trans', str),
@@ -70,7 +70,7 @@ async def async_test(db):
             ('price', float),
             ('after_hours', bool)
         ], 
-        'order_num', # Primary Key
+        prim_key='order_num', # Primary Key
         cache_enabled=True
     )
     print(db.tables['stocks'].columns)
@@ -523,3 +523,5 @@ async def async_test(db):
         print(f"## SIZE OF CACHE - {sys.getsizeof(db.tables[table].cache)} ##")
         print(f"## {table.upper()} CACHE ##")
         print(db.tables[table].cache)
+    
+    await db.close()
