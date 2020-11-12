@@ -298,14 +298,14 @@ Mysql
                             #for q in query:
                             if self.type == 'mysql':
                                 if not query_commit:
-                                    self.log.debug(f"{self.db_name} - execute: {q}")
-                                    await conn[0].execute(q)
+                                    self.log.debug(f"{self.db_name} - execute: {query}")
+                                    await conn[0].execute(query)
                                     result = await conn[0].fetchall()          
                                     for row in result:
                                         results.append(row)
                                 else:
                                     querries_to_commit.append(
-                                        (query_id, query, conn[0].execute(q))
+                                        (query_id, query, conn[0].execute(query))
                                     )
                                 
                             if self.type == 'sqlite':
