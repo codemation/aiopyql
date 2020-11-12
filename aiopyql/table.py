@@ -514,7 +514,7 @@ class Table:
                 if action == 'delete':
                     del self.cache[cache]
                     self.log.debug(f"## {self.name} cache deleted ##")
-    async def update(self, **kw):
+    async def update(self, where: dict, **kw):
         """
         Usage:
             db.tables['stocks'].update(
@@ -526,7 +526,10 @@ class Table:
             )
         """
         where_kw = {'where': {}}
-        where_kw['where'].update(kw['where'])
+        where_kw['where'].update(where)
+
+        # add to kw for input verification
+        kw['where'] = where
 
         # creates copy of input set vars for cache
         set_kw = {}
@@ -568,7 +571,7 @@ class Table:
         except Exception as e:
             return self.log.exception(f"Exception updating row for {self.name}")
 
-    async def delete(self, all_rows=False, **kw):
+    async def delete(self, where: dict, **kw):
         """
         Usage:
             db.tables['stocks'].delete(where={'order_num': 1})
@@ -577,16 +580,16 @@ class Table:
 
         # create a copy of where selection for cache usage
         del_where_sel = {}
-        del_where_sel.update(kw)
+        del_where_sel.update({'where': where})
+        
+        # assign where to kw for input verification
+        kw['where'] = where
 
         try:
             where_sel = self.__where(kw)
         except Exception as e:
             return repr(e)
         
-        if len(where_sel) < 1 and not all_rows:
-            error = "where statment is required with DELETE, otherwise specify .delete(all_rows=True)"
-            raise InvalidInputError(error, "correct & try again later")
         query = "DELETE FROM {name} {where}".format(
             name=self.name,
             where=where_sel
@@ -597,7 +600,8 @@ class Table:
                 await self.modify_cache('delete', del_where_sel)
             return result
         except Exception as e:
-            return self.log.exception(f"Exception deleting row from {self.name}")
+            self.log.exception(f"Exception deleting row from {self.name}")
+            return f"Exception deleting row from {self.name}"
 
     def __get_val_column(self):
         if len(self.columns.keys()) == 2:
