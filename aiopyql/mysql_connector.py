@@ -83,13 +83,11 @@ def show_tables(database):
 async def load_tables(db):
     tables_in_db_coro = await db.get("show tables")
     def describe_table_to_col(column):
-        print(f"describe_table_to_col: {column}")
         config = []
         for i in ' '.join(column.split(',')).split(' '):
             if not i == '' and not i == '\n':
                 config.append(i.rstrip())
         column = config
-        print(f"describe_table_to_col: {column}")
         field = inner(column[0], '`','`')
         typ = None
         for k, v in TRANSLATION.items():
