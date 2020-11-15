@@ -1,11 +1,14 @@
 from collections import deque
 from aiomysql import create_pool
 from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
+from aiopyql.exceptions import InvalidColumnType
 import json
 
 row_return_type = tuple
 
 TRANSLATION = {
+    'int': int,
+    'double': float,
     'integer': int,
     'text': str,
     'real': float,
@@ -80,11 +83,13 @@ def show_tables(database):
 async def load_tables(db):
     tables_in_db_coro = await db.get("show tables")
     def describe_table_to_col(column):
+        print(f"describe_table_to_col: {column}")
         config = []
         for i in ' '.join(column.split(',')).split(' '):
             if not i == '' and not i == '\n':
                 config.append(i.rstrip())
         column = config
+        print(f"describe_table_to_col: {column}")
         field = inner(column[0], '`','`')
         typ = None
         for k, v in TRANSLATION.items():
@@ -92,7 +97,7 @@ async def load_tables(db):
                 typ = v
                 break
         if typ == None:
-            raise InvalidColumnType(column[1], f"invalid type provided for column, supported types {list(TYPE_TRANSLATE.keys())}")
+            raise InvalidColumnType(column[1], f"invalid type provided for column, supported types {list(TRANSLATION.keys())}")
         """
         Null = 'NOT NULL ' if column[2] == 'NO' else ''
         Key = 'PRIMARY KEY ' if column[3] == 'PRI' else ''
@@ -176,4 +181,3 @@ async def submit_commit_pool(db, conn, conn_id):
             db.querries_to_commit[conn_id]
         )
         db.querries_to_commit[conn_id] = deque()
-                                
