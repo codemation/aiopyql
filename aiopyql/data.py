@@ -107,7 +107,7 @@ Mysql
         self.MAX_QUEUE_PROCESS = 100
 
         self.queue_processing = set()
-        self.MAX_QUEUE_PROCESSORS = 1 if self.type == 'sqlite' else 4
+        self.MAX_QUEUE_PROCESSORS = 1
         for _ in range(self.MAX_QUEUE_PROCESSORS):
             self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
 
@@ -297,7 +297,7 @@ Mysql
                             queue_empty = True
                             continue
 
-                        if not query_commit or time.time() - last_commit > 0.05:
+                        if not query_commit or time.time() - last_commit > 0.02:
                             await self.submit_commit_pool(self, conn, conn_id)
                             last_commit = time.time()
                         results = []
