@@ -25,7 +25,6 @@ def get_table_schema(table):
         for k,v in TRANSLATION.items():
             if col.type == v:
                 mods = col.mods
-                print(f"{k}, {v} mods: {mods}")
                 if len(cols) > 1:
                     cols = f'{cols}, '
                 if col_name == table.prim_key and (k=='text' or k=='bytea'):
@@ -34,7 +33,6 @@ def get_table_schema(table):
                     if v == int and 'AUTOINCREMENT' in col.mods:
                         cols = f'{cols}{col.name} SERIAL'
                         mods = ''.join(mods.split('AUTOINCREMENT'))
-                        print(f"mods for serial: {mods}")
                     else:
                         cols = f'{cols}{col.name} {k.upper()}'
                 if col_name == table.prim_key:
