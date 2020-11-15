@@ -86,7 +86,7 @@ See other usage examples in [recipies](https://github.com/codemation/aiopyql/blo
 
     async def main():
         mysql_db = await data.Database.create(
-            database='mysql_database',
+            database='postgres_database',
             user='postgres',
             password='my-secret-pw',
             host='localhost',
@@ -229,7 +229,7 @@ Requires List of at least 2 item tuples, max 3
 
 Some Column modifiers apply for column options i.e 
 
-    AUTOINCREMENT  (sqlite)
+    AUTOINCREMENT  (sqlite|postgres)
     AUTO_INCREMENT (mysql)
 
 See DB documentation for reference.
