@@ -1,6 +1,47 @@
+from collections import deque
 from aiomysql import create_pool
 from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
 import json
+
+row_return_type = tuple
+
+TRANSLATION = {
+    'integer': int,
+    'text': str,
+    'real': float,
+    'boolean': bool,
+    'blob': bytes,
+    'varchar': str,
+}
+def get_table_schema(table):
+    constraints = ''
+    cols = '('
+    for col_name,col in table.columns.items():
+        for k,v in table.TRANSLATION.items():
+            if col.type == v:
+                if len(cols) > 1:
+                    cols = f'{cols}, '
+                if col_name == table.prim_key and (k=='text' or k=='blob'):
+                    cols = f'{cols}{col.name} VARCHAR(36)'
+                else:
+                    cols = f'{cols}{col.name} {k.upper()}'
+                if col_name == table.prim_key:
+                    cols = f'{cols} PRIMARY KEY'
+                    if col.mods is not None and 'primary key' in col.mods.lower():
+                        cols = f"{cols} {''.join(col.mods.upper().split('PRIMARY KEY'))}"
+                    else:
+                        cols = f"{cols} {col.mods.upper()}"
+                else:
+                    if col.mods is not None:
+                        cols = f'{cols} {col.mods}'
+    if not table.foreign_keys == None:
+        for local_key, foreign_key in table.foreign_keys.items():
+            comma = ', ' if len(constraints) > 0 else ''
+            constraints = f"{constraints}{comma}FOREIGN KEY({local_key}) REFERENCES {foreign_key['table']}({foreign_key['ref']}) {foreign_key['mods']}"
+    comma = ', ' if len(constraints) > 0 else ''
+    schema = f"CREATE TABLE {table.name} {cols}{comma}{constraints})"
+    return schema
+
 def get_db_manager():
     """
     returns async generator which manages context
@@ -39,7 +80,6 @@ def show_tables(database):
 async def load_tables(db):
     tables_in_db_coro = await db.get("show tables")
     def describe_table_to_col(column):
-        TYPE_TRANSLATE = {'tinyint': bool, 'int': int, 'text': str, 'double': float, 'varchar': str}
         config = []
         for i in ' '.join(column.split(',')).split(' '):
             if not i == '' and not i == '\n':
@@ -47,7 +87,7 @@ async def load_tables(db):
         column = config
         field = inner(column[0], '`','`')
         typ = None
-        for k, v in TYPE_TRANSLATE.items():
+        for k, v in TRANSLATION.items():
             if k in column[1]:
                 typ = v
                 break
@@ -115,3 +155,25 @@ def validate_where_input(db, tables, where):
                     del(where[col_name])
                     continue
     return where
+async def process_query_no_commit(db, conn, query_id, query):
+    results = []
+    db.log.debug(f"{db.db_name} - execute: {query}")
+    await conn[0].execute(query)
+    result = await conn[0].fetchall()          
+    for row in result:
+        results.append(row)
+    return result
+def process_query_commit(db, conn, conn_id, query_id, query):
+    db.querries_to_commit[conn_id].append(
+        (query_id, query, conn[0].execute(query))
+    )
+
+async def submit_commit_pool(db, conn, conn_id):
+    if len(db.querries_to_commit[conn_id]) > 0:
+        db.log.debug(f"queue empty, commiting: {db.querries_to_commit[conn_id]}")
+        await db.commit_querries(
+            conn[1],
+            db.querries_to_commit[conn_id]
+        )
+        db.querries_to_commit[conn_id] = deque()
+                                
