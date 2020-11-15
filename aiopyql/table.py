@@ -64,36 +64,8 @@ class Table:
         if not self.cache == None:
             self.cache = None
             self.cache_enabled = False
-    def get_schema(self):
-        constraints = ''
-        cols = '('
-        for col_name,col in self.columns.items():
-            for k,v in self.TRANSLATION.items():
-                if col.type == v:
-                    if len(cols) > 1:
-                        cols = f'{cols}, '
-                    if col_name == self.prim_key and (k=='text' or k=='blob'):
-                        cols = f'{cols}{col.name} VARCHAR(36)'
-                    else:
-                        cols = f'{cols}{col.name} {k.upper()}'
-                    if col_name == self.prim_key:
-                        cols = f'{cols} PRIMARY KEY'
-                        if col.mods is not None and 'primary key' in col.mods.lower():
-                            cols = f"{cols} {''.join(col.mods.upper().split('PRIMARY KEY'))}"
-                        else:
-                            cols = f"{cols} {col.mods.upper()}"
-                    else:
-                        if col.mods is not None:
-                            cols = f'{cols} {col.mods}'
-        if not self.foreign_keys == None:
-            for local_key, foreign_key in self.foreign_keys.items():
-                comma = ', ' if len(constraints) > 0 else ''
-                constraints = f"{constraints}{comma}FOREIGN KEY({local_key}) REFERENCES {foreign_key['table']}({foreign_key['ref']}) {foreign_key['mods']}"
-        comma = ', ' if len(constraints) > 0 else ''
-        schema = f"CREATE TABLE {self.name} {cols}{comma}{constraints})"
-        return schema
     async def create_schema(self):
-        return await self.database.run(self.get_schema())
+        return await self.database.run(self.database.get_table_schema(self))
     def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
@@ -298,8 +270,11 @@ class Table:
                                         break
                                 if cont:
                                     continue
-                            col_refs[f'{table}.{column.name}'] =  column
-                            keys.append(f'{table}.{column.name}')
+                            if not self.database.type == 'postgres':
+                                col_refs[f'{table}.{column.name}'] =  column
+                                keys.append(f'{table}.{column.name}')
+                            else:
+                                col_refs[f'{column.name}'] =  column
             else:
                 col_refs = self.columns
                 keys = list(self.columns.keys())
@@ -315,7 +290,10 @@ class Table:
                         raise InvalidColumnType(f"column {col} is not a valid column", f"valid column types {self.columns}")
                     table, column = col.split('.')
                     if table in self.database.tables and column in self.database.tables[table].columns:
-                        col_refs[col] = self.database.tables[table].columns[column]
+                        if not self.database.type == 'postgres':
+                            col_refs[col] = self.database.tables[table].columns[column]
+                        else:
+                            col_refs[column] = self.database.tables[table].columns[column]
                         keys.append(col)
                         continue
                     
@@ -386,17 +364,27 @@ class Table:
         to_return = []
         if not rows == None:
             for row in rows:
-                r_dict = {}
-                for i,v in enumerate(row):
-                    try:
-                        if not v == None and col_refs[keys[i]].type == str and '{"' and '}' in v:
+                if self.database.row_return_type is tuple:
+                    r_dict = {}
+                    for i,v in enumerate(row):
+                        try:
+                            if not v == None and col_refs[keys[i]].type == str and '{"' and '}' in v:
                                 r_dict[keys[i]] = json.loads(v)
+                            else:
+                                r_dict[keys[i]] = v if not col_refs[keys[i]].type == bool else bool(v)
+                        except Exception as e:
+                            self.log.exception(f"error processing results on row {row} index {i} value {v} with {keys}")
+                            assert False
+                    to_return.append(r_dict)
+                if self.database.row_return_type is dict:
+                    r_dict = {}
+                    for column, value in dict(row).items():
+                        if not value == None and col_refs[column].type == str and '{"' and '}' in value:
+                            r_dict[column] = json.loads(value)
                         else:
-                            r_dict[keys[i]] = v if not col_refs[keys[i]].type == bool else bool(v)
-                    except Exception as e:
-                        self.log.exception(f"error processing results on row {row} index {i} value {v} with {keys}")
-                        assert False
-                to_return.append(r_dict)
+                            r_dict[column] = value if not col_refs[column].type == bool else bool(value)
+
+                    to_return.append(r_dict)
         if cache_new_rows and self.cache_enabled:
             for row in to_return:
                 value_to_cache = row[self.prim_key]
@@ -443,7 +431,8 @@ class Table:
             if kw[col_name]== 'NULL' or kw[col_name] == None or col.type == str and '{"' and '}' in kw[col_name]:
                 new_val = kw[col_name]
             else:
-                new_val = kw[col_name] if col.type is not str else f'"{kw[col_name]}"'
+                #new_val = kw[col_name] if col.type is not str else f'"{kw[col_name]}"'
+                new_val = kw[col_name] if not col.type is str else f"'{kw[col_name]}'"
             vals = f'{vals}{new_val}'
 
         cols = cols + ')'
