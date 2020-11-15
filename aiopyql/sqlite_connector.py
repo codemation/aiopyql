@@ -1,6 +1,7 @@
 from collections import deque
 from aiosqlite import connect
 from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
+from aiopyql.exceptions import InvalidColumnType
 import json
 
 row_return_type = tuple
