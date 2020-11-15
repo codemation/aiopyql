@@ -27,9 +27,9 @@ Use install script to install the aiopyql into the activated environment librari
     (aiopyql-env)$ cd aiopyql; sudo ./install.py install
 
 ### Compatable Databases
-
-- mysql
-- sqlite
+- postgres - via [asyncpg](https://github.com/MagicStack/asyncpg)
+- mysql - via [aiomysql](https://github.com/aio-libs/aiomysql)
+- sqlite - via [aiosqlite](https://github.com/omnilib/aiosqlite)
 
 ## Getting Started 
 
@@ -78,9 +78,28 @@ See other usage examples in [recipies](https://github.com/codemation/aiopyql/blo
 <br>
 - [FastAPI](https://github.com/codemation/aiopyql/blob/master/recipies/fastapi_aiopyql.py)
 
+## Postgres
+<br>
+
+    import asyncio
+    from aiopyql import data
+
+    async def main():
+        mysql_db = await data.Database.create(
+            database='mysql_database',
+            user='postgres',
+            password='my-secret-pw',
+            host='localhost',
+            port=5432,
+            type='postgres'
+        )
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())
+
+
 ## Mysql
 <br>
-Note: if no type specified, default is sqlite
 
     import asyncio
     from aiopyql import data
@@ -476,7 +495,9 @@ All Rows & Specific Columns from employees, Combining All Rows & Specific Column
     
 ### Basic Join with conditions
 
-join='positions' will only work if the calling table "await db.tables['employees']" has a foreign-key reference to table 'positions'
+join='positions' 
+
+This syntax is possible if the calling table "await db.tables['employees']" has a foreign-key reference to table 'positions'
 
     await db.tables['employees'].select(
         'employees.name', 
