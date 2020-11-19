@@ -64,6 +64,8 @@ class Table:
         if not self.cache == None:
             self.cache = None
             self.cache_enabled = False
+    async def get_schema(self):
+        return await self.database.get_table_schema(self)
     async def create_schema(self):
         return await self.database.run(self.database.get_table_schema(self))
     def get_tables_from_input(self, kw):
