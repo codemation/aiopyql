@@ -400,9 +400,23 @@ Mysql
                 foreign_keys={'trans': {'table': 'transactions', 'ref': 'txId'}} 
             )
         """
+
+        str_to_type = {'str': str, 'int': int, 'bytes': bytes, 'float': float, 'bool': bool}
         #Convert tuple columns -> named_tuples
         cols = []
         for c in columns:
+            if not isinstance(c[1], type):
+                if not c[1] in str_to_type:
+                    raise Exception(f"{c[1]} is not a valid type() or key in {str_to_type}")
+                if len(c) > 2:
+                    cols.append(
+                        TableColumn(c[0], str_to_type[c[1]], c[2])
+                    )
+                else:
+                    cols.append(
+                        TableColumn(c[0], str_to_type[c[1]], '')
+                    )
+                continue
             # Allows for len(2) tuple input ('name', int) --> converts to TableColumn('name', int, None)
             if not isinstance(c, TableColumn):
                 cols.append(TableColumn(*c) if len(c) > 2 else TableColumn(*c, ''))

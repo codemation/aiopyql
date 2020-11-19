@@ -20,7 +20,7 @@ def get_table_schema(table):
     constraints = ''
     cols = '('
     for col_name,col in table.columns.items():
-        for k,v in table.TRANSLATION.items():
+        for k,v in TRANSLATION.items():
             if col.type == v:
                 if len(cols) > 1:
                     cols = f'{cols}, '

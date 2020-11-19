@@ -18,13 +18,6 @@ class Table:
         self.database = database
         self.log = self.database.log
         self.types = {int,str,float,bool,bytes}
-        self.TRANSLATION = {
-            'integer': int,
-            'text': str,
-            'real': float,
-            'boolean': bool,
-            'blob': bytes 
-        }
         
         self.cache_enabled = cache_enabled
         self.max_cache_len = max_cache_len
@@ -65,9 +58,9 @@ class Table:
             self.cache = None
             self.cache_enabled = False
     async def get_schema(self):
-        return await self.database.get_table_schema(self)
+        return self.database.get_table_schema(self)
     async def create_schema(self):
-        return await self.database.run(self.database.get_table_schema(self))
+        return await self.database.run(await self.get_schema())
     def get_tables_from_input(self, kw):
         tables = [self]
         if 'join' in kw:
