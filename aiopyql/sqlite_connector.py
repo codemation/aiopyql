@@ -35,6 +35,7 @@ def get_table_schema(table):
                 else:
                     if col.mods is not None:
                         cols = f'{cols} {col.mods}'
+                break
     if not table.foreign_keys == None:
         for local_key, foreign_key in table.foreign_keys.items():
             comma = ', ' if len(constraints) > 0 else ''
