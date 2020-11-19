@@ -50,12 +50,13 @@ async def async_test(db):
     print(db.tables['stocks'].columns)
     assert 'stocks' in db.tables, "table creation failed"
 
-     
+    ## Test creating table with 'str': str types
+
     await db.create_table(
         'departments', 
         [    
-            ('id', int, 'UNIQUE'),
-            ('name', str)
+            ['id', 'int', 'UNIQUE'],
+            ['name', 'str']
 
         ], 
         'id', # Primary Key 
