@@ -17,5 +17,5 @@ setuptools.setup(
          "Operating System :: OS Independent",
      ],
      python_requires='>=3.7, <4',   
-     install_requires=['aiosqlite', 'aiomysql'],
+     install_requires=['aiosqlite', 'aiomysql', 'asyncpg'],
  )
