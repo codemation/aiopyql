@@ -6,7 +6,7 @@ from typing import (
 )
 from collections import deque
 from concurrent.futures._base import CancelledError
-from asyncio.base_futures import InvalidStateError
+from asyncio import InvalidStateError
 
 from aiopyql.utilities import TableColumn
 from aiopyql.cache import Cache
