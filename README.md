@@ -91,7 +91,7 @@ See other usage examples in [recipies](https://github.com/codemation/aiopyql/blo
             password='my-secret-pw',
             host='localhost',
             port=5432,
-            type='postgres'
+            db_type='postgres'
         )
 
     loop = asyncio.new_event_loop()
@@ -111,7 +111,7 @@ See other usage examples in [recipies](https://github.com/codemation/aiopyql/blo
             password='my-secret-pw',
             host='localhost',
             port=3306,
-            type='mysql'
+            db_type='mysql'
         )
 
     loop = asyncio.new_event_loop()
