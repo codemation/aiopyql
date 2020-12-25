@@ -76,6 +76,11 @@ class Table:
         tables = self.get_tables_from_input(kw)
         kw = self.database._validate_where_input(tables, kw)
         if 'where' in kw:
+            if not type(kw['where']) in {list, dict}:
+                raise InvalidInputError(
+                    kw['where'],
+                    f"{kw['where']} is type {type(kw['where'])} - use where={{'col': <value>}} or where=[['col', <operator>, <value>]]"
+                )
             kw['where'] = self.database._validate_where_input(tables, kw['where'])
         return kw
     def _validate_table_column(self, col_name, no_raise=False):
