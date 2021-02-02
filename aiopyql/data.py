@@ -153,8 +153,9 @@ Mysql
         """
         for task in self.queue_process_tasks:
             task.cancel()
-        result = await asyncio.gather(*self.queue_process_tasks)
-        self.log.debug(f"closing database - result {result}")
+        await self._query_queue.put(('EXITING', None))
+        await asyncio.sleep(0.1)
+        self.log.debug(f"{self.db_name} closed successfully")
     def __str__(self):
         return self.db_name
     def enable_cache(self):
@@ -277,6 +278,10 @@ Mysql
                                 queue_empty = False
                             else:
                                 query_id, query = self._query_queue.get_nowait()
+                            if query_id == 'EXITING':
+                                self.log.debug(f"__process_queue received exiting signal")
+                                break
+
                             query_commit = not (
                                 'SELECT' in query
                                 or 'select' in query
