@@ -385,11 +385,14 @@ Mysql
         drop_table: bool = True
     ):
         if drop_table:
-            await self.run(f'drop table {name}')
+            try:
+                await self.run(f'drop table {name}')
+            except Exception as e:
+                self.log.exception(f"error removing table {name} from database")
         if name in self.tables:
             del self.tables[name]
             self.log.warning(f"table {name} removed")
-            
+
     async def create_table(
         self, 
         name: str, 
