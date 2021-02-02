@@ -3,6 +3,7 @@ from aiosqlite import connect
 from aiopyql.utilities import flatten, no_blanks, inner, TableColumn
 from aiopyql.exceptions import InvalidColumnType
 import json
+import time
 
 row_return_type = tuple
 
@@ -173,3 +174,70 @@ async def submit_commit_pool(db, conn, conn_id):
             db.querries_to_commit[conn_id]
         )
         db.querries_to_commit[conn_id] = deque()
+
+async def migrate_table(db, new_table):
+    log = db.log
+
+    
+    def get_dependent_tables(table_name):
+        dependent_tables = []
+        for table in db.tables:
+            if db.tables[table].foreign_keys:
+                for f_key, f_config in db.tables[table].foreign_keys.items():
+                    print(f"{table} get_dependent_tables: fkey_config: {f_config}")
+                    if table_name == f_config['table']:
+                        dependent_tables.append(table)
+        print(f"## dependent_tables: {dependent_tables}")
+        for table in dependent_tables:
+            dependent_tables += get_dependent_tables(table)
+        return dependent_tables
+    dependent_tables = get_dependent_tables(new_table.name)
+    print(f"dependent_tables: {dependent_tables}")
+    tables_to_migrate = [ new_table.name ] + dependent_tables
+
+    table_copies = {}
+
+    # create copies of table & dependent tables
+    for table in tables_to_migrate:
+        table_copies[table] = await db.tables[table].select('*')
+    
+    log.warning(f"migrate table starting on tables {tables_to_migrate} due to '{new_table.name}' schema change")
+
+    backup_name = f"{db.db_name}_backup_{time.time()}"
+    log.warning(f"creating backup {backup_name} before migration")
+
+    with open(backup_name, 'w') as backup:
+        backup.write(
+            json.dumps(table_copies)
+        )
+
+    new_table_cols = [col for col in new_table.columns]
+
+    await db.run(
+        f'ALTER TABLE {new_table.name} RENAME TO {new_table.name}_old'
+    )
+
+    # create new table
+    await new_table.create_schema()
+
+    db.tables[new_table.name] = new_table
+
+    try:
+        tables_to_migrate.reverse()
+        for table in tables_to_migrate:
+            if not table == new_table.name:
+                await db.run(f'drop table {table}')
+                await db.tables[table].create_schema()
+            for row in table_copies[table]:
+                if table == new_table.name:
+                    migrated_row = {k: v for k,v in row.items() if k in new_table_cols}
+                    await db.tables[table].insert(**migrated_row)
+                else:
+                    await db.tables[table].insert(**row)
+
+        await db.run(
+            f'DROP TABLE {new_table.name}_old'
+        )
+    except Exception as e:
+        log.exception(f"error migrating table {new_table.name} - {repr(e)}")
+        raise e

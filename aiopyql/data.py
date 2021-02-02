@@ -137,6 +137,7 @@ Mysql
         self.load_tables = connector.load_tables
         self.row_return_type = connector.row_return_type
         self.get_table_schema = connector.get_table_schema
+        self.migrate_table = connector.migrate_table
 
         self.process_query_commit = connector.process_query_commit
         self.process_query_no_commit = connector.process_query_no_commit
@@ -373,7 +374,17 @@ Mysql
             self.log.debug(f"## db cache added - query {query}")
             self.cache[query] = result
         return result
-    
+    async def remove_table(
+        self,
+        name: str,
+        drop_table: bool = True
+    ):
+        if drop_table:
+            await self.run(f'drop table {name}')
+        if name in self.tables:
+            del self.tables[name]
+            self.log.warning(f"table {name} removed")
+            
     async def create_table(
         self, 
         name: str, 
@@ -422,17 +433,50 @@ Mysql
                 cols.append(TableColumn(*c) if len(c) > 2 else TableColumn(*c, ''))
             else:
                 cols.append(c)
-        self.tables[name] = Table(
-            name, 
-            self, 
-            cols, 
-            prim_key,
-            foreign_keys=foreign_keys,
-            cache_enabled=cache_enabled,
-            max_cache_len=max_cache_len
-        )
-        if not 'existing' in kw:
-            await self.tables[name].create_schema()
+        
+        try:
+            print(self.tables)
+            new_table = Table(
+                name, 
+                self, 
+                cols, 
+                prim_key,
+                foreign_keys=foreign_keys,
+                cache_enabled=cache_enabled,
+                max_cache_len=max_cache_len
+            )
+            
+            # check for existing table & detect schema changes
+            if name in self.tables:
+                print(self.tables[name].columns)
+                existing_cols = [col for col in self.tables[name].columns]
+                new_cols = [col.name for col in cols]
+                migrated = False
+
+                # check for new columnstype=<class
+                for col in cols:
+                    if not col.name in existing_cols:
+                        # migration needed
+                        await self.migrate_table(self, new_table)
+                        migrated = True
+                        break
+                # check for removed columns
+                if not migrated:
+                    for col in existing_cols:
+                        if not col in new_cols:
+                            # col removed from original table - need to migrate
+                            await self.migrate_table(self, new_table)
+    
+            result = await new_table.create_schema()
+            self.log.warning(f"create_table result: {result}")
+
+        except Exception as e:
+            self.log.exception(f"error during create_table - {repr(e)}")
+            print(self.tables)
+            if 'exists' in f"{repr(e)}":
+                self.log.warning(f"detected already existing table {name}")
+        
+        self.tables[name] = new_table
         self.log.debug(f"table {name} created")
         return f"table {name} created"
 

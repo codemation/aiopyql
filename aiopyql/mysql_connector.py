@@ -180,3 +180,34 @@ async def submit_commit_pool(db, conn, conn_id):
             db.querries_to_commit[conn_id]
         )
         db.querries_to_commit[conn_id] = deque()
+
+
+async def migrate_table(db, new_table):
+    log = db.log
+
+    log.warning(f"migrate table starting on table {new_table.name}")
+
+    new_table_cols = [col.name for col in new_table.columns]
+
+    table_copy = await db.tables[new_table.name].select('*')
+
+    await db.tables[new_table.name].run(
+        f'ALTER TABLE {new_table.name} RENAME TO {new_table.name}_old'
+    )
+
+    # create new table
+    await new_table.create_schema()
+
+    db.tables[new_table.name] = new_table
+
+    try:
+        for row in table_copy:
+            migrated_row = {k: v for k,v in row.items() if k in new_table_cols}
+            await db.tables[new_table.name].insert(**migrated_row)
+
+        await db.tables[new_table.name].run(
+            f'DROP TABLE {new_table.name}_old'
+        )
+    except Exception as e:
+        log.exception(f"error migrating table {new_table.name} - {repr(e)}")
+        raise e
