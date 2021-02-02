@@ -50,7 +50,7 @@ class Cache:
             old_cache_time = self.cache[cached_key]
             del self.timestamp_to_cache[old_cache_time]
         self.cache[cached_key] = cache_time
-        self.timestamp_to_cache[cache_time] = [row, cached_key]
+        self.timestamp_to_cache[cache_time] = (row, cached_key)
         self.access_history.append(cache_time)
         self.check_max_len_and_clear()
     def __delitem__(self, cached_key):
