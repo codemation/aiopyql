@@ -11,4 +11,7 @@ class TestData(unittest.TestCase):
                 cache_enabled=True,
                 #debug=True
             )
-        asyncio.run(async_test(db))
+        try:
+            asyncio.run(async_test(db))
+        except asyncio.CancelledError:
+            pass

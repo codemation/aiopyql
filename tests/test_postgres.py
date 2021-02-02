@@ -23,4 +23,7 @@ class TestData(unittest.TestCase):
         )
         
         # Start tests
-        asyncio.run(async_test(db))
+        try:
+            asyncio.run(async_test(db))
+        except asyncio.CancelledError:
+            pass

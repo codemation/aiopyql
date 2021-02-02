@@ -5,8 +5,7 @@ async def async_test(db):
     db = await db
     import random
     for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
-        if table in db.tables:
-            await db.run(f'drop table {table}')
+        await db.remove_table(table)
 
     def check_sel(requested, selection):
         request_items = []
@@ -249,6 +248,18 @@ async def async_test(db):
                     }
                 )
             assert len(join_sel) == count, f"expected number of {position}'s' is {count}, found {len(join_sel)}"
+
+    # table migration on foreign key tables
+    await db.create_table(
+        'departments', 
+        [    
+            ['id', 'int', 'UNIQUE'],
+            ['name', 'str'],
+            ['location', 'str']
+        ], 
+        'id', # Primary Key 
+        cache_enabled=True
+    )
 
     # join select - testing default key usage if not provided
     for position, count in [('Director', 4),('Manager', 8), ('Rep', 16), ('Intern', 32)]:
