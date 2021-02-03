@@ -178,21 +178,20 @@ async def submit_commit_pool(db, conn, conn_id):
 async def migrate_table(db, new_table):
     log = db.log
 
-    
     def get_dependent_tables(table_name):
         dependent_tables = []
         for table in db.tables:
             if db.tables[table].foreign_keys:
                 for f_key, f_config in db.tables[table].foreign_keys.items():
-                    print(f"{table} get_dependent_tables: fkey_config: {f_config}")
+                    log.debug(f"{table} get_dependent_tables: fkey_config: {f_config}")
                     if table_name == f_config['table']:
                         dependent_tables.append(table)
-        print(f"## dependent_tables: {dependent_tables}")
+        log.debug(f"## dependent_tables: {dependent_tables}")
         for table in dependent_tables:
             dependent_tables += get_dependent_tables(table)
         return dependent_tables
     dependent_tables = get_dependent_tables(new_table.name)
-    print(f"dependent_tables: {dependent_tables}")
+    log.debug(f"dependent_tables: {dependent_tables}")
     tables_to_migrate = [ new_table.name ] + dependent_tables
 
     table_copies = {}
@@ -228,6 +227,8 @@ async def migrate_table(db, new_table):
             if not table == new_table.name:
                 await db.run(f'drop table {table}')
                 await db.tables[table].create_schema()
+        tables_to_migrate.reverse()
+        for table in tables_to_migrate:
             for row in table_copies[table]:
                 if table == new_table.name:
                     migrated_row = {k: v for k,v in row.items() if k in new_table_cols}
