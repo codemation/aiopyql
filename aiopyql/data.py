@@ -48,6 +48,7 @@ Mysql
         loop: Optional[asyncio.AbstractEventLoop] = None,
         **kw
     ):
+
         db = Database(
             database=database,
             db_type=db_type,
@@ -69,7 +70,8 @@ Mysql
         debug: Optional[bool] = False,
         log: Optional[logging.Logger] = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
-        **kw):
+        **kw
+    ):
         self.db_name = database
         self.loop = asyncio.get_running_loop() if not loop else loop
         # 
@@ -110,6 +112,20 @@ Mysql
         self.MAX_QUEUE_PROCESSORS = 1
         for _ in range(self.MAX_QUEUE_PROCESSORS):
             self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
+
+    async def restart(self):
+        self = await self.restarter()
+
+    async def restart_queue_processor(self):
+        #await self.restart()
+        #return
+        self.log.warning(f"restart_queue_processor called: current {self.queue_processing}")
+        self.setup_connection_and_cursor()
+
+        if len(self.queue_processing) < self.MAX_QUEUE_PROCESSORS:
+            for _ in range(self.MAX_QUEUE_PROCESSORS):
+                self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
+            
 
     def setup_parameter_check(self, params):
         self.connect_params =  {'user', 'password', 'host', 'port'}
@@ -318,7 +334,9 @@ Mysql
                             results = e
                         if not query_commit:
                             await self.queue_results[query_id].put(results)
-                    
+                        if 'Broken pipe' in f"{results}":
+                            last_exception = results
+                            raise last_exception
                 except Exception as e:
                     if not isinstance(e, CancelledError):
                         self.log.exception(f"error in __process_queue, closing db connection")
@@ -329,15 +347,22 @@ Mysql
         except Exception as e:
             if not e in {InvalidStateError, CancelledError}:
                 self.log.exception(f"error during __process_queue")
+                if 'Broken pipe' in repr(e):
+                    last_exception = e
 
         # un-locks processing so new processing tasks can start
-        self.queue_processing.remove(conn_id)
-        self.log.debug(f"completed processing items in queue")
+        self.queue_processing  = set()
+        self.log.debug(f"completed processing items in queue - {last_exception}")
+        if not last_exception in {InvalidStateError, CancelledError}:
+            self.log.debug(f"completed processing items in queue - restarting")
+            await self.restart_queue_processor()
         return "completed processing items in queue"
 
     async def execute(self, query, commit=False):
+        self.log.debug(f"execute - {query}")
         query_id = str(uuid.uuid1())
         self.queue_results[query_id] = asyncio.Queue(1)
+
         await self._query_queue.put((query_id, query))
         try:
             result = await self.queue_results[query_id].get()
@@ -443,7 +468,6 @@ Mysql
                 cols.append(c)
         
         try:
-            print(self.tables)
             new_table = Table(
                 name, 
                 self, 
@@ -456,7 +480,6 @@ Mysql
             
             # check for existing table & detect schema changes
             if name in self.tables:
-                print(self.tables[name].columns)
                 existing_cols = [col for col in self.tables[name].columns]
                 new_cols = [col.name for col in cols]
                 migrated = False
@@ -479,13 +502,12 @@ Mysql
             self.log.warning(f"create_table result: {result}")
 
         except Exception as e:
-            self.log.exception(f"error during create_table - {repr(e)}")
-            print(self.tables)
             if 'exists' in f"{repr(e)}":
                 self.log.warning(f"detected already existing table {name}")
+            else:
+                self.log.exception(f"error during create_table - {repr(e)}")
         
         self.tables[name] = new_table
-        self.log.debug(f"table {name} created")
         return f"table {name} created"
 
 #   TOODOO:
