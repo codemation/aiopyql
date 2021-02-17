@@ -113,12 +113,8 @@ Mysql
         for _ in range(self.MAX_QUEUE_PROCESSORS):
             self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
 
-    async def restart(self):
-        self = await self.restarter()
-
     async def restart_queue_processor(self):
-        #await self.restart()
-        #return
+        await asyncio.sleep(1)
         self.log.warning(f"restart_queue_processor called: current {self.queue_processing}")
         self.setup_connection_and_cursor()
 
