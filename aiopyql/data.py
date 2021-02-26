@@ -113,14 +113,68 @@ Mysql
         for _ in range(self.MAX_QUEUE_PROCESSORS):
             self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
 
+        self.liveness = self.loop.create_task(self.keep_alive())
+    async def keep_alive(self):
+        """
+        periodic check for db connection live-ness 
+        """
+        try:
+            if 'liveness' in self.tables:
+                await self.run('drop table liveness')
+        except Exception as e:
+            pass
+
+        await self.create_table(
+            'liveness',
+            columns=[
+                ('timestamp_utc', str),
+                ('status', str)
+            ],
+            prim_key='timestamp_utc',
+            cache_enabled=True
+        )
+        last_timestamp = str(time.time())
+
+        while True:
+            try:
+                if await self.tables['liveness'][last_timestamp] is None:
+                    await self.tables['liveness'].insert(
+                        timestamp_utc=last_timestamp
+                    )
+                await asyncio.sleep(30)
+                new_timestamp = str(time.time())
+                await self.tables['liveness'].update(
+                    timestamp_utc=new_timestamp,
+                    where={'timestamp_utc': last_timestamp}
+                )
+                last_timestamp = new_timestamp
+                timestamp = await self.tables['liveness'].select('*')
+                self.log.warning(f"liveness timestamp: {timestamp}")
+                
+                timestamp = timestamp[0]['timestamp_utc']
+                self.log.warning(f'liveness check completed - {timestamp}')
+                if timestamp == last_timestamp:
+                    continue
+            except Exception as e:
+                if not type(e) in {InvalidStateError, CancelledError}:
+                    self.log.exception(f"error in liveness check - closing & restarting")
+                    await self.close(liveness=False)
+                    self.queue_process_tasks = []
+                    await self.restart_queue_processor()
+                    continue
+                # exiting
+                break
+
     async def restart_queue_processor(self):
         await asyncio.sleep(1)
+        self.queue_processing = set()
         self.log.warning(f"restart_queue_processor called: current {self.queue_processing}")
         self.setup_connection_and_cursor()
 
         if len(self.queue_processing) < self.MAX_QUEUE_PROCESSORS:
             for _ in range(self.MAX_QUEUE_PROCESSORS):
                 self.queue_process_tasks.append(self.loop.create_task(self.__process_queue()))
+
             
 
     def setup_parameter_check(self, params):
@@ -159,7 +213,7 @@ Mysql
             return connector.validate_where_input(self, tables, where)
         self._validate_where_input = db_validate_where_input
 
-    async def close(self):
+    async def close(self, liveness=True):
         """
         stops running running process task
         """
@@ -168,6 +222,9 @@ Mysql
         await self._query_queue.put(('EXITING', None))
         await asyncio.sleep(0.1)
         self.log.debug(f"{self.db_name} closed successfully")
+        if liveness:
+            self.liveness.cancel()
+            await asyncio.sleep(0.1)
     def __str__(self):
         return self.db_name
     def enable_cache(self):
