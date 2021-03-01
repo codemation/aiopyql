@@ -137,7 +137,10 @@ Mysql
 
         while True:
             try:
-                if await self.tables['liveness'][last_timestamp] is None:
+                timestamp = await self.tables['liveness'].select(
+                    '*', where={'timestamp_utc': last_timestamp})
+
+                if not timestamp:
                     await self.tables['liveness'].insert(
                         timestamp_utc=last_timestamp
                     )
@@ -148,11 +151,12 @@ Mysql
                     where={'timestamp_utc': last_timestamp}
                 )
                 last_timestamp = new_timestamp
-                timestamp = await self.tables['liveness'].select('*')
+                timestamp = await self.tables['liveness'].select(
+                    '*', where={'timestamp_utc': last_timestamp})
                 self.log.warning(f"liveness timestamp: {timestamp}")
                 
                 timestamp = timestamp[0]['timestamp_utc']
-                self.log.warning(f'liveness check completed - {timestamp}')
+                self.log.warning(f'liveness check completed - {timestamp} - last_timestamp: {last_timestamp}')
                 if timestamp == last_timestamp:
                     continue
             except Exception as e:
@@ -309,10 +313,13 @@ Mysql
         run_querries = []
 
         try:
-            while len(querries) > 0:
+            #while len(querries) > 0:
+            while True:
                 run_querries.append(
                     self.__commit_querries_run_query(querries.popleft())
             )
+        except IndexError:
+            pass
         except Exception as e:
             self.log.exception(f"exception while building commit query pool")
 
@@ -358,19 +365,16 @@ Mysql
                                 )
 
                             query_start = time.time()
-
-                        except Exception as e:
-                            
-                            if not isinstance(e, asyncio.queues.QueueEmpty):
-                                if not isinstance(e, CancelledError):
-                                    self.log.exception(f"error waiting / preparing query")
-                                last_exception = e
-                                break
+                        except asyncio.queues.QueueEmpty:
                             await self.submit_commit_pool(self, conn, conn_id)
-
                             last_commit = time.time()
                             queue_empty = True
-                            continue
+                            continue       
+                        except Exception as e:
+                            if not isinstance(e, CancelledError):
+                                self.log.exception(f"error waiting / preparing query")
+                            last_exception = e
+                            break
 
                         if not query_commit or time.time() - last_commit > 0.02:
                             await self.submit_commit_pool(self, conn, conn_id)
