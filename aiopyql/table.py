@@ -357,8 +357,9 @@ class Table:
             rows = await self.database.get(query)
         except Exception as e:
             self.log.exception(f"Exception while selecting data in {self.name} ")
-            cache_new_rows = False
-            rows = []
+            raise e
+            #cache_new_rows = False
+            #rows = []
 
         #dictonarify each row result and return
         to_return = []
@@ -448,6 +449,7 @@ class Table:
                 
         except Exception as e:
             self.log.exception(f"exception inserting into {self.name}")
+            raise e
     async def set_item(self, key, values):
         async def set_item_coro():
             if not await self[key] == None:
@@ -558,7 +560,8 @@ class Table:
                 await self.modify_cache('update', where_kw, set_kw)
             return result
         except Exception as e:
-            return self.log.exception(f"Exception updating row for {self.name}")
+            self.log.exception(f"Exception updating row for {self.name}")
+            raise e
 
     async def delete(self, where: dict, **kw):
         """
@@ -590,7 +593,7 @@ class Table:
             return result
         except Exception as e:
             self.log.exception(f"Exception deleting row from {self.name}")
-            return f"Exception deleting row from {self.name}"
+            raise e
 
     def __get_val_column(self):
         if len(self.columns.keys()) == 2:
