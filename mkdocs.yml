@@ -1,0 +1,17 @@
+site_name: aiopyql
+theme: readthedocs
+markdown_extensions:
+  - admonition
+nav:
+  - Home: index.md
+  - Setup: setup.md
+  - Quick Start: quickstart.md
+  - Database Usage: databases.md
+  - Caching: cache.md
+  - Tables: tables.md
+  - Insert: insert.md
+  - Select: select.md
+  - Update: update.md
+  - Delete: delete.md
+  - Recipies: recipies.md
+  - Contribute: contribute.md
