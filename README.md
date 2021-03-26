@@ -1,9 +1,12 @@
 ![](./images/logo.png)
 
 # 
+<h3>
 A fast and easy-to-use asyncio ORM(Object-relational Mapper) for performing C.R.U.D. ops within RBDMS tables using python. 
+</h3>
 
-[![PyPI version](https://badge.fury.io/py/aiopyql.svg)](https://badge.fury.io/py/aiopyql)
+[![Documentation Status](https://readthedocs.org/projects/aiopyql/badge/?version=latest)](https://aiopyql.readthedocs.io/en/latest/?badge=latest)
+ [![PyPI version](https://badge.fury.io/py/aiopyql.svg)](https://pypi.org/project/aiopyql/)
 
 #
 ## Key Features
@@ -13,6 +16,11 @@ A fast and easy-to-use asyncio ORM(Object-relational Mapper) for performing C.R.
 - Automatic schema discovery / migrations
 
 #
+## Documentation
+[https://aiopyql.readthedocs.io/](https://aiopyql.readthedocs.io/)
+
+#
+
 ### Instalation
 ```bash
 $ virtualenv -p python3.7 aiopyql-env
