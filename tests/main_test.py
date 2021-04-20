@@ -6,7 +6,8 @@ async def async_test(db):
     import random
     try:
         for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
-            await db.remove_table(table)
+            if table in db.tables:
+                await db.remove_table(table)
     except Exception as e:
         pass
 
