@@ -4,8 +4,11 @@ from aiopyql.exceptions import InvalidInputError
 async def async_test(db):
     db = await db
     import random
-    for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
-        await db.remove_table(table)
+    try:
+        for table in ['employees', 'positions', 'departments', 'keystore', 'stocks']:
+            await db.remove_table(table)
+    except Exception as e:
+        pass
 
     def check_sel(requested, selection):
         request_items = []
