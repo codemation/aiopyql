@@ -303,7 +303,7 @@ Mysql
             await q_coro
             await self.queue_results[query_id].put([])
         except Exception as e:
-            self.log.exception(f"error running query: {query}")
+            #self.log.exception(f"error running query: {query}")
             results = e
             await self.queue_results[query_id].put(results)
 
