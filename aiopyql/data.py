@@ -153,10 +153,10 @@ Mysql
                 last_timestamp = new_timestamp
                 timestamp = await self.tables['liveness'].select(
                     '*', where={'timestamp_utc': last_timestamp})
-                self.log.warning(f"liveness timestamp: {timestamp}")
+                self.log.debug(f"liveness timestamp: {timestamp}")
                 
                 timestamp = timestamp[0]['timestamp_utc']
-                self.log.warning(f'liveness check completed - {timestamp} - last_timestamp: {last_timestamp}')
+                self.log.debug(f'liveness check completed - {timestamp} - last_timestamp: {last_timestamp}')
                 if timestamp == last_timestamp:
                     continue
             except Exception as e:
@@ -556,7 +556,7 @@ Mysql
                             await self.migrate_table(self, new_table)
     
             result = await new_table.create_schema()
-            self.log.warning(f"create_table result: {result}")
+            self.log.debug(f"create_table result: {result}")
 
         except Exception as e:
             if 'exists' in f"{repr(e)}":
