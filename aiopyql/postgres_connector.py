@@ -60,12 +60,16 @@ def get_db_manager():
     """
     async def postgres_connect(*args, **kwds):
         pool = await create_pool(*args, **kwds)
+        connections = []
         try:
             async with pool.acquire() as conn:
                 yield conn
         except Exception as e:
             pass
-        await pool.close()
+        finally:
+            await pool.close()
+            for conn in connections:
+                await pool.release(conn)
     return postgres_connect
 
 def get_cursor_manager(database):
@@ -75,9 +79,13 @@ def get_cursor_manager(database):
     for changes
     """
     async def postgres_cursor(commit=False):
-        async for db in database.connect(**database.connect_config):
-            yield db
-        return                
+        #connections = []
+        try:
+            async for db in database.connect(**database.connect_config):
+                #connections.append(db)
+                yield db
+        except Exception:
+            pass              
     return postgres_cursor
 
 def show_tables(database):
@@ -170,7 +178,8 @@ async def load_tables(db):
         Key = 'PRIMARY KEY ' if column[3] == 'PRI' else ''
         Default = '' # TOODOO - check if this needs implementing
         """
-        extra = ' '.join(column[2:])
+        extra = ' '.join([m for m in column[2:] if not 'VARYING' in m.upper()])
+
         if postgres_type == 'serial':
             extra = f'{extra} AUTOINCREMENT'
 
@@ -208,13 +217,16 @@ async def load_tables(db):
                 local_key = inner(inner(local_key), '`', '`')
                 parent_table, mods = ref.split(')')
                 parent_table, parent_key = parent_table.split('(')
+                mods = ' '.join([m for m in mods.rstrip().split(' ') if not 'VARYING' in m])
                 foreign_keys[no_blanks(local_key)] = {
                     'table': no_blanks(inner(parent_table, '`', '`')), 
                     'ref': no_blanks(inner(parent_key, '`', '`')),
-                    'mods': mods.rstrip()
-                        }
+                    'mods': mods
+                }
         #table = inner(table, '`', '`')
         db.log.debug(f"load_table: loading existing table {table}")
+        db.log.debug(f"cols_in_table: {cols_in_table}")
+
         await db.create_table(table_name, cols_in_table, primary_key, foreign_keys=foreign_keys, existing=True)
 def validate_where_input(db, tables, where):
     for table in tables:
@@ -310,6 +322,7 @@ async def migrate_table(db, new_table):
     db.tables[new_table.name] = new_table
 
     try:
+        db.log.warning(f"Need to migrate tables: {tables_to_migrate}")
         tables_to_migrate.reverse()
         for table in tables_to_migrate:
             if not table == new_table.name:
