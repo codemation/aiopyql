@@ -514,4 +514,6 @@ async def async_test(db):
         print(f"## {table.upper()} CACHE ##")
         print(db.tables[table].cache)
     
+    await asyncio.sleep(2)
+
     await db.close()
