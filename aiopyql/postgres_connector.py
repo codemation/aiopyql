@@ -79,10 +79,8 @@ def get_cursor_manager(database):
     for changes
     """
     async def postgres_cursor(commit=False):
-        #connections = []
         try:
             async for db in database.connect(**database.connect_config):
-                #connections.append(db)
                 yield db
         except Exception:
             pass              
