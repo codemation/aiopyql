@@ -203,7 +203,9 @@ Mysql
             import aiopyql.postgres_connector as connector
 
         self.connect = connector.get_db_manager()
-        self.cursor = connector.get_cursor_manager(self)
+        self.cursor_manager = connector.get_cursor_manager(self)
+        self.cursor = None
+
         self.load_tables = connector.load_tables
         self.row_return_type = connector.row_return_type
         self.get_table_schema = connector.get_table_schema
@@ -223,6 +225,10 @@ Mysql
         """
         for task in self.queue_process_tasks:
             task.cancel()
+        try:
+            await self.cursor.asend(None)
+        except StopAsyncIteration:
+            pass
         await self._query_queue.put(('EXITING', None))
         await asyncio.sleep(0.1)
         self.log.debug(f"{self.db_name} closed successfully")
@@ -335,7 +341,8 @@ Mysql
     async def __process_queue(self, commit=True):
         try:
             last_exception = None
-            async for conn in self.cursor(commit=commit):
+            self.cursor = self.cursor_manager(commit=commit)
+            async for conn in self.cursor:
                 self.log.debug(f"__process_queue conn: {conn}")
                 if self.pre_query:
                     await conn.execute(self.pre_query)
