@@ -512,7 +512,7 @@ class Table:
                     del self.cache[cache]
                     self.log.debug(f"## {self.name} cache deleted ##")
 
-    async def upsert(self, target= None, **kw):
+    async def upsert(self, **kw):
         """
         Usage:
             db.tables['stocks_new_tb2'].upsert(
@@ -528,8 +528,7 @@ class Table:
             => Same Usage as `insert()` but with optional target argument.
         """
         # defaulting target to prim_key
-        if target == None:
-            target = self.prim_key
+        target = self.prim_key
         # check for primary key existence
         if not target in kw:
             raise Exception(f"Upsert requires a primary key OR a target column to check for.")
