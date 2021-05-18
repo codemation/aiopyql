@@ -428,8 +428,13 @@ class Table:
                 cols = f'{cols}, '
                 vals = f'{vals}, '
             cols = f'{cols}{col_name}'
+            #postgres array
+            if str(self.database) == 'postgres' and (kw[col_name][0], kw[col_name][-1]) == ('[',']'):
+                print('hi')
+                new_val = str(kw[col_name]).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
+                new_val = f"'{new_val}'"
             #json handling
-            if kw[col_name]== 'NULL' or kw[col_name] == None or col.type == str and '{"' and '}' in kw[col_name]:
+            elif kw[col_name]== 'NULL' or kw[col_name] == None or col.type == str and '{"' and '}' in kw[col_name]:
                 new_val = kw[col_name]
             else:
                 #new_val = kw[col_name] if col.type is not str else f'"{kw[col_name]}"'
@@ -442,6 +447,7 @@ class Table:
         query = f'INSERT INTO {self.name} {cols} VALUES {vals}'
         #self.log.debug(query)
         try:
+            print(query)
             result = await self.database.run(query)
             if add_to_cache and self.cache_enabled:
                 self.log.debug("## cache add - from insertion ##")
@@ -505,12 +511,60 @@ class Table:
                 if action == 'delete':
                     del self.cache[cache]
                     self.log.debug(f"## {self.name} cache deleted ##")
+
+    async def upsert(self, target= None, **kw):
+        """
+        Usage:
+            db.tables['stocks_new_tb2'].upsert(
+                date='2006-01-05',
+                trans={
+                    'type': 'BUY', 
+                    'conditions': {'limit': '36.00', 'time': 'EndOfTradingDay'}, #JSON
+                'tradeTimes':['16:30:00.00','16:30:01.00']}, # JSON
+                symbol='RHAT', 
+                qty=100.0,
+                price=35.14,
+                target='symbol')
+            => Same Usage as `insert()` but with optional target argument.
+        """
+        # defaulting target to prim_key
+        if target == None:
+            target = self.prim_key
+        # check for primary key existence
+        if not target in kw:
+            raise Exception(f"Upsert requires a primary key OR a target column to check for.")
+        
+        # get an easier reference to upset prim_key
+        primary_key = kw[target]
+
+        # check if row already exists
+        row = await self.select(
+            target, 
+            where={target: primary_key}
+        )
+
+        # row exists - update
+        if row != None:
+            # extract primary_key from kw
+            primary_key = kw.pop(self.prim_key)
+
+            # update row
+            return await self.update(
+                **kw,
+                where={self.prim_key: primary_key}
+            )
+
+        # insert
+        else:
+            return await self.insert(**kw)
+
     async def update(self, where: dict, **kw):
         """
         Usage:
             db.tables['stocks'].update(
                 symbol='NTAP',
-                trans='SELL', 
+                trans='SELL',
+                members= list(members), #ONLY POSTGRES, others don't support array.
                 where={
                         'order_num': 1
                     }
@@ -535,8 +589,12 @@ class Table:
                 continue
             if len(cols_to_set) > 1:
                 cols_to_set = f'{cols_to_set}, '
+            #postgres array
+            if str(self.database) == 'postgres' and (col_val[0], col_val[-1]) == ('[',']'):
+                column_value = str(col_val).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
+                column_value = f"'{column_value}'"
             #JSON detection
-            if col_val == 'NULL' or self.columns[col_name].type == str and '{"' and '}' in col_val:
+            elif col_val == 'NULL' or self.columns[col_name].type == str and '{"' and '}' in col_val:
                 column_value = col_val
             else:
                 column_value = col_val if self.columns[col_name].type is not str else f"'{col_val}'"
@@ -561,6 +619,7 @@ class Table:
             return result
         except Exception as e:
             self.log.exception(f"Exception updating row for {self.name}")
+            print("\nQuery produced: ", query)
             raise e
 
     async def delete(self, where: dict, **kw):
