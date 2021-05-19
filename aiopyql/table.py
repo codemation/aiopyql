@@ -429,7 +429,7 @@ class Table:
                 vals = f'{vals}, '
             cols = f'{cols}{col_name}'
             #postgres array
-            if str(self.database) == 'postgres' and (kw[col_name][0], kw[col_name][-1]) == ('[',']'):
+            if str(self.database) == 'postgres' and col.type == str and (kw[col_name][0], kw[col_name][-1]) == ('[',']'):
                 print('hi')
                 new_val = str(kw[col_name]).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
                 new_val = f"'{new_val}'"
@@ -447,7 +447,6 @@ class Table:
         query = f'INSERT INTO {self.name} {cols} VALUES {vals}'
         #self.log.debug(query)
         try:
-            print(query)
             result = await self.database.run(query)
             if add_to_cache and self.cache_enabled:
                 self.log.debug("## cache add - from insertion ##")
@@ -589,7 +588,7 @@ class Table:
             if len(cols_to_set) > 1:
                 cols_to_set = f'{cols_to_set}, '
             #postgres array
-            if str(self.database) == 'postgres' and (col_val[0], col_val[-1]) == ('[',']'):
+            if str(self.database) == 'postgres' and self.columns[col_name].type == str and (col_val[0], col_val[-1]) == ('[',']'):
                 column_value = str(col_val).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
                 column_value = f"'{column_value}'"
             #JSON detection
