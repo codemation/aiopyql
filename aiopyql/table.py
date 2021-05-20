@@ -524,7 +524,7 @@ class Table:
                 qty=100.0,
                 price=35.14,
                 target='symbol')
-            => Same Usage as `insert()` but with optional target argument.
+            => PRIMARY KEY is a must to be passed, it will raise error if u don't do so.
         """
         # defaulting target to prim_key
         target = self.prim_key
