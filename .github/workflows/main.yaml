@@ -3,7 +3,7 @@ on: [push, pull_request]
 
 jobs:
   # Label of the container job
-  test-postgres:
+  test-postgres-mysql-sqlite:
     # Containers must run in Linux based operating systems
     runs-on: ubuntu-latest
     # Docker Hub image that `container-job` executes in
@@ -27,6 +27,15 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      mysql:
+        # Docker Hub image
+        image: mysql
+        # Provide the password for postgres
+        env:
+          MYSQL_USER: josh
+          MYSQL_PASSWORD: abcd1234
+          MYSQL_DATABASE: joshdb
+
     steps:
       # Downloads a copy of the code in your repository before running CI tests
       - name: Check out repository code
@@ -43,3 +52,14 @@ jobs:
         env:
           # The hostname used to communicate with the PostgreSQL service container
           DB_HOST: postgres
+
+      - name: Test Aiopyql on Mysql
+        run: |
+          python3 -m unittest tests/test_mysql.py || \
+          python3 -m unittest tests/test_mysql.py
+        env:
+          # The hostname used to communicate with the PostgreSQL service container
+          DB_HOST: mysql
+      - name: Test Aiopyql on sqlite
+        run: |
+          python3 -m unittest test/test_sqlite.py
