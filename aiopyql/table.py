@@ -541,7 +541,7 @@ class Table:
         )
 
         # row exists - update
-        if row != None:
+        if row:
             # extract primary_key from kw
             primary_key = kw.pop(self.prim_key)
 
