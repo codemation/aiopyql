@@ -25,8 +25,7 @@ jobs:
           POSTGRES_PASSWORD: abcd1234
           POSTGRES_DB: joshdb
         ports:
-          # Maps tcp port 5432 on service container to the host
-          - 5432:5432
+        - 5432:5432
 
         # Set health checks to wait until postgres has started
         options: >-
@@ -45,7 +44,6 @@ jobs:
           MYSQL_ROOT_PASSWORD: abcd1234
           MYSQL_DATABASE: joshdb
         ports:
-        # Maps tcp port 3306 on service container to the host
         - 3306:3306
 
     steps:
@@ -63,7 +61,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Wait for DB's
         run: | 
-          sleep 120
+          sleep 15
       - name: Test Aiopyql on PostgreSQL
         run: |
           python -m unittest tests/test_postgres.py || \
