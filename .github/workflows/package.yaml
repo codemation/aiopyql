@@ -68,7 +68,7 @@ jobs:
           python -m unittest tests/test_postgres.py
         env:
           # The hostname used to communicate with the PostgreSQL service container
-          DB_HOST: postgres
+          DB_HOST: localhost
 
       - name: Test Aiopyql on Mysql
         run: |
