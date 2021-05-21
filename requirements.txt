@@ -1,3 +1,4 @@
 aiosqlite
 aiomysql
 asyncpg
+cryptography
