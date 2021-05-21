@@ -96,13 +96,10 @@ jobs:
         run: |
           pip install wheel twine
 
-      - name: Get Next Version
+      - name: Package & Test PyPI Installation
         run: |
           export PYQL_NEXT_VER=$(pip -qqq download aiopyql && ls aiopyql*.whl | sed 's/-/" "/g' | awk '{print "(" $2 ")"}' |  python nextbuild.py)
           sed -i 's/PYQLVERSION/'$PYQL_NEXT_VER'/g' setup.py
-
-      - name: Create Package and Test Package Install
-        run: |
           python setup.py bdist_wheel
           export PYQL_PACKAGE=$(pwd)/dist/aiopyql-$PYQL_NEXT_VER-py3-none-any.whl
           pip install $(echo -n $PYQL_PACKAGE)
