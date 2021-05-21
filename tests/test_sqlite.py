@@ -23,7 +23,7 @@ class TestData(unittest.TestCase):
         async def load_and_check_database():
             db = await get_database()
             for table in ['employees', 'positions', 'departments', 'stocks']:
-                assert table in db.tables, f"expected {table} already in database"
+                assert table in db.tables, f"expected {table} already in database - tables {db.tables}"
         try:
             asyncio.run(load_and_check_database())
         except asyncio.CancelledError:
