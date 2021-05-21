@@ -11,6 +11,7 @@ jobs:
       # Downloads a copy of the code in your repository before running CI tests
       - name: Check out repository code
         uses: actions/checkout@v2
+      - name: Setup Python
         uses: actions/setup-python@v2
         with:
           python-version: 3.8
