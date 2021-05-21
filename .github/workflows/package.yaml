@@ -1,0 +1,41 @@
+name: Package
+on:
+  push:
+    branches:
+      - master
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      # Downloads a copy of the code in your repository before running CI tests
+      - name: Check out repository code
+        uses: actions/checkout@v2
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Install Packaging dependencies
+        run: |
+          pip install twine
+
+      - name: Get Next Version
+        run:
+          export PYQL_NEXT_VER=$(pip -qqq download aiopyql && ls aiopyql*.whl | sed 's/-/" "/g' | awk '{print "(" $2 ")"}' |  python nextbuild.py)
+          sed -i 's/PYQLVERSION/'$PYQL_NEXT_VER'/g' setup.py
+
+      - name: Create Package
+        run: |
+          python setup.py bdist_wheel
+          export PYQL_PACKAGE=$(pwd)/dist/aiopyql-$PYQL_NEXT_VER-py3-none-any.whl
+
+      - name: Test install new package
+        run: |
+          pip install $(echo -n $PYQL_PACKAGE)
+
+      - name: Upload to PyPi
+        env: # Or as an environment variable
+          PYPI: ${{ secrets.PYPI }}
+        run: |
+          export PYQL_NEXT_VER=$(pip -qqq download aiopyql && ls aiopyql*.whl | sed 's/-/" "/g' | awk '{print "(" $2 ")"}' |  python nextbuild.py) 
+          export PYQL_PACKAGE=$(pwd)/dist/aiopyql-$PYQL_NEXT_VER-py3-none-any.whl
+          python -m twine upload $(pwd)/dist/aiopyql-$PYQL_NEXT_VER-py3-none-any.whl -u codemation -p $PYPI
