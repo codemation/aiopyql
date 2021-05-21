@@ -34,6 +34,7 @@ jobs:
         env:
           MYSQL_USER: josh
           MYSQL_PASSWORD: abcd1234
+          MYSQL_ROOT_PASSWORD: abcd1234
           MYSQL_DATABASE: joshdb
 
     steps:
