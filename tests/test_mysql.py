@@ -29,7 +29,7 @@ class TestData(unittest.TestCase):
         except asyncio.CancelledError:
             pass
 
-    def test_load_existing_tables(self):
+        del db
         async def load_and_check_database():
             db = await get_database()
             for table in ['employees', 'positions', 'departments', 'stocks']:
