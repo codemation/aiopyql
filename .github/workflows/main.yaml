@@ -1,5 +1,5 @@
 name: tests
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
   # Label of the container job
@@ -53,6 +53,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Waiting for DB's to start
+        run: | 
+          sleep 120
       - name: Test Aiopyql on PostgreSQL
         run: |
           python -m unittest tests/test_postgres.py || \
