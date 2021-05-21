@@ -12,7 +12,7 @@ jobs:
     #container: joshjamison/python38:latest
     strategy:
       matrix:
-        python-version: [3.8]
+        python-version: [3.7,3.8,3.9]
 
     # Service containers to run with `container-job`
     services:
@@ -76,7 +76,7 @@ jobs:
           python -m unittest tests/test_mysql.py
         env:
           # The hostname used to communicate with the PostgreSQL service container
-          DB_HOST: mysql
+          DB_HOST: localhost
       - name: Test Aiopyql on sqlite
         run: |
           python -m unittest tests/test_sqlite.py
