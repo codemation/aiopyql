@@ -63,4 +63,4 @@ jobs:
           DB_HOST: mysql
       - name: Test Aiopyql on sqlite
         run: |
-          python3 -m unittest test/test_sqlite.py
+          python3 -m unittest tests/test_sqlite.py
