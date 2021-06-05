@@ -420,7 +420,7 @@ class Table:
         for col_name, col in self.columns.items():
             if not col_name in kw:
                 if not col.mods == None:
-                    if 'NOT NULL' in col.mods and not 'INCREMENT' in col.mods:
+                    if 'NOT NULL' in col.mods and not 'INCREMENT' in col.mods and not '_id' in col_name:
                         raise InvalidInputError(f'{col_name} is a required field for INSERT in table {self.name}', "correct and try again")
                 continue
 
@@ -429,13 +429,13 @@ class Table:
                 vals = f'{vals}, '
             cols = f'{cols}{col_name}'
             #postgres array
-            if str(self.database) == 'postgres' and col.type == str and (kw[col_name][0], kw[col_name][-1]) == ('[',']'):
+            if str(self.database.type) == 'postgres' and col.type == str and (kw[col_name][0], kw[col_name][-1]) == ('[',']'):
                 print('hi')
                 new_val = str(kw[col_name]).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
                 new_val = f"'{new_val}'"
             else:
                 #new_val = kw[col_name] if col.type is not str else f'"{kw[col_name]}"'
-                new_val = kw[col_name] if not col.type is str else f"'{kw[col_name]}'"
+                new_val = kw[col_name] if not col.type is str else ("'"+ kw[col_name].replace("'", "''")+ "'")
             vals = f'{vals}{new_val}'
 
         cols = cols + ')'
@@ -585,11 +585,11 @@ class Table:
             if len(cols_to_set) > 1:
                 cols_to_set = f'{cols_to_set}, '
             #postgres array
-            if str(self.database) == 'postgres' and self.columns[col_name].type == str and (col_val[0], col_val[-1]) == ('[',']'):
+            if str(self.database.type) == 'postgres' and self.columns[col_name].type == str and (col_val[0], col_val[-1]) == ('[',']'):
                 column_value = str(col_val).replace('[','{', 1).replace(']','}', 1).replace("'", '"')
                 column_value = f"'{column_value}'"
             else:
-                column_value = col_val if self.columns[col_name].type is not str else f"'{col_val}'"
+                column_value = col_val if self.columns[col_name].type is not str else ("'"+ col_val.replace("'", "''")+ "'")
             cols_to_set = f'{cols_to_set}{col_name} = {column_value}'
 
         # process where selection for db query
